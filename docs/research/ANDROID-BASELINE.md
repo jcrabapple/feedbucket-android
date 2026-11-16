@@ -119,14 +119,20 @@ Verified against actual source at d2b979cc, not issue recitals.
    (counts above). Smallest foundation remedy: fix or locally scope the 20
    `LocalContextGetResourceValueCall`, 6 `MissingQuantity`, 2
    `FlowOperatorInvokedInComposition` errors in touched files during the
-   foundation wave, or wire an explicit `lint { abortOnError }`/baseline
-   decision as its own reviewed change — never silent suppressions.
+   foundation wave. A measured delta gate may track untouched inherited
+   findings; do not disable abortOnError or add suppressions/baselines to hide
+   new failures (approved execution constraints).
 2. Release signing uses the publicly committed `signature/reader.keystore`
    for all buildTypes (see Signing).
 3. Bundled font `app/src/main/res/font/google_sans_flex.ttf` (~4 MB, default
    typeface in `ui/theme/Type.kt` and referenced in `RYWebView.kt`) has **no
-   license file in the repo**; Google Sans Flex is not OFL-licensed, so GPL
-   redistribution needs verification or replacement in the foundation wave.
+   license text file in the repo**. Orchestrator correction: the actual bundled
+   font name table (version 3.007) explicitly declares SIL Open Font License
+   1.1 in name ID 13 and links https://openfontlicense.org in ID 14. The
+   official project also publishes OFL.txt:
+   https://github.com/googlefonts/googlesans-flex/blob/main/OFL.txt .
+   Include matching copyright/license notices; the earlier non-OFL claim
+   was wrong and does not justify replacing the font.
 4. `googlePlay` flavor requires its own source set/assets presence in future
    CI; not exercised here (out of scope for githubDebug gates).
 5. Deprecated Gradle features warning (Gradle 9.0 incompatibility) from
