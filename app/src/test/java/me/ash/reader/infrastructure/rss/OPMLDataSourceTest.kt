@@ -3,14 +3,25 @@ package me.ash.reader.infrastructure.rss
 import android.content.Context
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.runBlocking
+import me.ash.reader.domain.model.account.Account
+import me.ash.reader.domain.model.account.AccountType
+import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
 import me.ash.reader.domain.model.group.GroupWithFeed
+import me.ash.reader.domain.repository.FeedDao
+import me.ash.reader.domain.repository.GroupDao
+import me.ash.reader.domain.service.AccountService
+import me.ash.reader.domain.service.LocalRssService
+import me.ash.reader.domain.service.OpmlService
+import me.ash.reader.domain.service.RssService
 import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.junit.MockitoJUnitRunner
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 
 internal const val OPML_TEMPLATE: String = """
@@ -49,6 +60,14 @@ class OPMLDataSourceTest {
     private fun fill(value: String): String = OPML_TEMPLATE.replace("{{var}}", value)
 
     private fun parse(opml: String): List<GroupWithFeed> = runBlocking {
+        opmlDataSource.parseFileInputStream(
+            inputStream = opml.byteInputStream(Charsets.UTF_8),
+            defaultGroup = defaultGroup,
+            targetAccountId = 1
+        ).groupWithFeedList
+    }
+
+    private fun parseFull(opml: String): OPMLDataSource.OpmlParseResult = runBlocking {
         opmlDataSource.parseFileInputStream(
             inputStream = opml.byteInputStream(Charsets.UTF_8),
             defaultGroup = defaultGroup,
@@ -136,5 +155,80 @@ class OPMLDataSourceTest {
         val feed = parse(opml)[0].feeds[0]
         Assert.assertEquals("news,tech", feed.tags)
         Assert.assertEquals(defaultGroup.id, feed.groupId)
+    }
+
+    @Test
+    fun testDuplicateXmlUrlInDocumentSkippedAndCounted() {
+        // S33: duplicate xmlUrl -> skip with count (ON CONFLICT DO NOTHING
+        // parity). The duplicate may appear anywhere in the document.
+        val opml = fill("""
+            <outline type="rss" text="First" xmlUrl="https://dup.example/feed.xml"/>
+            <outline text="Folder" title="Folder">
+                <outline type="rss" text="Dup" xmlUrl="https://dup.example/feed.xml"/>
+                <outline type="rss" text="Other" xmlUrl="https://other.example/rss"/>
+            </outline>
+        """)
+        val result = parseFull(opml)
+        Assert.assertEquals(1, result.duplicateCount)
+        val allFeeds = result.groupWithFeedList.flatMap { it.feeds }
+        Assert.assertEquals(2, allFeeds.size)
+        Assert.assertEquals(1, allFeeds.count { it.url == "https://dup.example/feed.xml" })
+    }
+
+    @Test
+    fun testExportCategoryCsvAndSiteUrlRoundTrip() {
+        // S33 export parity: category = feed.tags CSV; htmlUrl carries
+        // siteUrl; both round-trip through the importer (htmlUrl ->
+        // siteUrl, category -> tags).
+        val accountId = 1
+        val group = Group(id = "1\$g1", name = "Tech", accountId = accountId)
+        val taggedFeed = Feed(
+            id = "1\$f1", name = "Droid Feed", url = "https://droid.example/feed",
+            groupId = group.id, accountId = accountId,
+            siteUrl = "https://droid.example", tags = "tech,mobile",
+        )
+        val bareFeed = Feed(
+            id = "1\$f2", name = "Plain", url = "https://plain.example/rss",
+            groupId = group.id, accountId = accountId,
+            siteUrl = "", tags = "",
+        )
+        val groupDao = mock<GroupDao> {
+            onBlocking { queryById(any()) } doReturn null
+            onBlocking { queryAllGroupWithFeed(any()) } doReturn
+                listOf(GroupWithFeed(group, mutableListOf(taggedFeed, bareFeed)))
+        }
+        val accountService = mock<AccountService> {
+            onBlocking { getCurrentAccount() } doReturn
+                Account(name = "Synthetic", type = AccountType.Local)
+        }
+        val localRssService = mock<LocalRssService>()
+        val rssService = mock<RssService>()
+        val service = OpmlService(
+            context = mockContext,
+            groupDao = groupDao,
+            feedDao = mock(),
+            accountService = accountService,
+            rssService = rssService,
+            OPMLDataSource = opmlDataSource,
+            ioDispatcher = mockIODispatcher,
+        )
+        val exported = runBlocking { service.saveToString(accountId, attachInfo = false) }
+
+        // category CSV export on the tagged feed; no category on the bare one.
+        val reparsed = be.ceau.opml.OpmlParser().parse(exported.byteInputStream(Charsets.UTF_8))
+        val outlines = reparsed.body.outlines.flatMap { it.subElements } +
+            reparsed.body.outlines.filter { it.attributes["xmlUrl"] != null }
+        val taggedOutline = outlines.first { it.attributes["xmlUrl"] == taggedFeed.url }
+        Assert.assertEquals("tech,mobile", taggedOutline.attributes["category"])
+        Assert.assertEquals("https://droid.example", taggedOutline.attributes["htmlUrl"])
+        val bareOutline = outlines.first { it.attributes["xmlUrl"] == bareFeed.url }
+        Assert.assertFalse(bareOutline.attributes.containsKey("category"))
+
+        // Round-trip: the exported document imports back to identical
+        // tags/siteUrl.
+        val roundTripped = parseFull(exported).groupWithFeedList.flatMap { it.feeds }
+        val roundTrippedTagged = roundTripped.single { it.url == taggedFeed.url }
+        Assert.assertEquals("tech,mobile", roundTrippedTagged.tags)
+        Assert.assertEquals("https://droid.example", roundTrippedTagged.siteUrl)
     }
 }

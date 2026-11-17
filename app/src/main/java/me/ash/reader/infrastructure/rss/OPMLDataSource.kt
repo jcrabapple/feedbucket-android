@@ -21,7 +21,8 @@ import javax.inject.Inject
  * CSV (lowercase, order-preserving dedupe); the group comes from the FIRST
  * folder level (ReadYou single-display-folder parity, S4); `htmlUrl` ->
  * `siteUrl`. Feeds without `xmlUrl` are folders; the default group collects
- * top-level feeds.
+ * top-level feeds. Duplicate `xmlUrl` values WITHIN the document are
+ * skipped and counted (ON CONFLICT DO NOTHING parity, S33).
  */
 class OPMLDataSource @Inject constructor(
     @ApplicationContext
@@ -30,18 +31,24 @@ class OPMLDataSource @Inject constructor(
     private val ioDispatcher: CoroutineDispatcher,
 ) {
 
+    /** Parse output: grouped feeds + in-document duplicate skip count. */
+    data class OpmlParseResult(
+        val groupWithFeedList: List<GroupWithFeed>,
+        val duplicateCount: Int,
+    )
+
     @Throws(Exception::class)
     suspend fun parseFileInputStream(
         inputStream: InputStream,
         defaultGroup: Group,
         targetAccountId: Int,
-    ): List<GroupWithFeed> {
+    ): OpmlParseResult {
         val opml = OpmlParser().parse(inputStream)
         val result = ParseResult(defaultGroup)
         for (outline in opml.body.outlines) {
             walk(outline, result, firstFolder = null, inheritedTags = emptyList(), targetAccountId)
         }
-        return result.groupWithFeedList
+        return OpmlParseResult(result.groupWithFeedList, result.duplicateCount)
     }
 
     private fun walk(
@@ -56,6 +63,11 @@ class OPMLDataSource @Inject constructor(
         val xmlUrl = outline.extractUrl()
 
         if (xmlUrl != null) {
+            // S33: duplicate xmlUrl within the document is skipped+counted.
+            if (!result.seenUrls.add(xmlUrl)) {
+                result.duplicateCount += 1
+                return
+            }
             val group = firstFolder ?: result.defaultGroup
             result.addFeed(
                 group,
@@ -70,7 +82,7 @@ class OPMLDataSource @Inject constructor(
                     isBrowser = outline.extractPresetBrowser(),
                     siteUrl = outline.attributes["htmlUrl"] ?: "",
                     tags = tags.distinct().joinToString(","),
-                )
+                ),
             )
             return
         }
@@ -109,6 +121,8 @@ class OPMLDataSource @Inject constructor(
     /** Ordered group list; feeds attach to their group's slot (default group first). */
     private class ParseResult(val defaultGroup: Group) {
         val groupWithFeedList = mutableListOf<GroupWithFeed>()
+        val seenUrls = mutableSetOf<String>()
+        var duplicateCount = 0
 
         init {
             groupWithFeedList.add(GroupWithFeed(group = defaultGroup, feeds = mutableListOf()))

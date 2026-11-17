@@ -36,17 +36,31 @@ class OpmlService @Inject constructor(
 ) {
 
     /**
+     * S33 — OPML import result counts (subscriptions imported/skipped only;
+     * OPML never carries reader state, D11).
+     */
+    data class OpmlImportResult(
+        val imported: Int,
+        val skipped: Int,
+    )
+
+    /**
      * Imports OPML file.
      *
      * @param [inputStream] input stream of OPML file
+     * @return imported/skipped counts (in-document duplicate `xmlUrl` and
+     *   already-subscribed feeds count as skipped, ON CONFLICT DO NOTHING
+     *   parity)
      */
     @Throws(Exception::class)
-    suspend fun saveToDatabase(inputStream: InputStream) {
-        withContext(ioDispatcher) {
+    suspend fun saveToDatabase(inputStream: InputStream): OpmlImportResult {
+        return withContext(ioDispatcher) {
             val defaultGroup = groupDao.queryById(getDefaultGroupId(context.currentAccountId))!!
-            val groupWithFeedList =
+            val parseResult =
                 OPMLDataSource.parseFileInputStream(inputStream, defaultGroup, context.currentAccountId)
-            groupWithFeedList.forEach { groupWithFeed ->
+            var imported = 0
+            var skipped = parseResult.duplicateCount
+            parseResult.groupWithFeedList.forEach { groupWithFeed ->
                 if (groupWithFeed.group != defaultGroup) {
                     groupDao.insert(groupWithFeed.group)
                 }
@@ -57,13 +71,20 @@ class OpmlService @Inject constructor(
                         repeatList.add(it)
                     }
                 }
-                feedDao.insertList((groupWithFeed.feeds subtract repeatList.toSet()).toList())
+                skipped += repeatList.size
+                val inserted = (groupWithFeed.feeds subtract repeatList.toSet()).toList()
+                feedDao.insertList(inserted)
+                imported += inserted.size
             }
+            OpmlImportResult(imported, skipped)
         }
     }
 
     /**
-     * Exports OPML file.
+     * Exports OPML file (S33 web export parity): folder nesting from
+     * `groupId` (ReadYou parity) AND `category` = `feed.tags` CSV; `htmlUrl`
+     * carries `siteUrl` so consumers round-trip it back (import maps
+     * `htmlUrl` -> `siteUrl`). Both consumers round-trip either form.
      */
     @Throws(Exception::class)
     suspend fun saveToString(accountId: Int, attachInfo: Boolean): String {
@@ -93,8 +114,12 @@ class OpmlService @Inject constructor(
                                     "text" to feed.name,
                                     "title" to feed.name,
                                     "xmlUrl" to feed.url,
-                                    "htmlUrl" to feed.url
+                                    "htmlUrl" to feed.siteUrl.ifBlank { feed.url },
                                 ).apply {
+                                    // S33: category = feed.tags (web export parity).
+                                    if (feed.tags.isNotBlank()) {
+                                        put("category", feed.tags)
+                                    }
                                     if (attachInfo) {
                                         put("isNotification", feed.isNotification.toString())
                                         put("isFullContent", feed.isFullContent.toString())
