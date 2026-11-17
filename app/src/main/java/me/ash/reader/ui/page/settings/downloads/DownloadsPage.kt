@@ -1,5 +1,6 @@
 package me.ash.reader.ui.page.settings.downloads
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
@@ -150,21 +151,43 @@ fun DownloadsPage(
     }
 
     confirmRemoveId?.let { articleId ->
+        val entry = items.firstOrNull { it.download.articleId == articleId }
         AlertDialog(
             onDismissRequest = { confirmRemoveId = null },
-            title = { Text(stringResource(R.string.downloads_remove)) },
-            text = { Text(stringResource(R.string.downloads_remove_all_confirm, 1)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.remove(articleId)
-                        confirmRemoveId = null
+            title = { Text(entry?.articleTitle ?: articleId) },
+            text = {
+                Column {
+                    // S27a — Retry images re-opens the missing asset set even
+                    // though assetsComplete=1 (row visibly incomplete).
+                    val row = entry?.download
+                    if (row != null && row.state == me.ash.reader.domain.model.download.ArticleDownload.STATE_READY &&
+                        row.imageCount < row.expectedImageCount
+                    ) {
+                        TextButton(
+                            onClick = {
+                                viewModel.retryImages(articleId)
+                                confirmRemoveId = null
+                            }
+                        ) {
+                            Text(
+                                stringResource(
+                                    R.string.downloads_retry_images,
+                                    row.expectedImageCount - row.imageCount,
+                                )
+                            )
+                        }
                     }
-                ) {
-                    Text(stringResource(R.string.confirm))
+                    TextButton(
+                        onClick = {
+                            viewModel.remove(articleId)
+                            confirmRemoveId = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.downloads_remove))
+                    }
                 }
             },
-            dismissButton = {
+            confirmButton = {
                 TextButton(onClick = { confirmRemoveId = null }) {
                     Text(stringResource(R.string.cancel))
                 }

@@ -107,6 +107,11 @@ constructor(
         viewModelScope.launch(ioDispatcher) { downloadService.remove(articleId) }
     }
 
+    /** S27a — "Retry images": re-open the missing asset set on a ready row. */
+    fun retryImages(articleId: String) {
+        viewModelScope.launch(ioDispatcher) { downloadService.resumeAssets(articleId) }
+    }
+
     fun removeAll() {
         viewModelScope.launch(ioDispatcher) { downloadService.removeAll() }
     }

@@ -458,6 +458,7 @@
     <string name="downloads_state_failed_storage">Failed: storage</string>
     <string name="downloads_state_failed_oversize">Failed: over size cap</string>
     <string name="downloads_remove">Remove download</string>
+    <string name="downloads_retry_images">Retry images (%1$d missing)</string>
     <string name="downloads_remove_all">Remove all downloads</string>
     <string name="downloads_empty">No downloads yet</string>
     <string name="downloads_remove_all_confirm">Remove %1$d downloads?</string>
