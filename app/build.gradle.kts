@@ -131,6 +131,7 @@ android {
         resources.excludes.add("rome-utils-*.jar")
     }
     androidResources { generateLocaleConfig = true }
+    sourceSets { getByName("androidTest").assets.srcDir("$projectDir/schemas") }
     composeCompiler { featureFlags = setOf(ComposeFeatureFlag.PausableComposition) }
     namespace = "me.ash.reader"
 }
@@ -223,6 +224,7 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.junit.ext)
     androidTestImplementation(libs.espresso)
+    androidTestImplementation(libs.room.testing)
     testImplementation(libs.mockito.core)
     testImplementation(libs.mockito.junit.jupiter)
     testImplementation(libs.mockito.kotlin)
