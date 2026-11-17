@@ -15,6 +15,14 @@ import java.io.InputStream
 import java.util.*
 import javax.inject.Inject
 
+/**
+ * S33 OPML import (web `opml.py` walk parity): NESTED outlines are walked
+ * recursively; folder and `category` names ACCUMULATE into the feed's tags
+ * CSV (lowercase, order-preserving dedupe); the group comes from the FIRST
+ * folder level (ReadYou single-display-folder parity, S4); `htmlUrl` ->
+ * `siteUrl`. Feeds without `xmlUrl` are folders; the default group collects
+ * top-level feeds.
+ */
 class OPMLDataSource @Inject constructor(
     @ApplicationContext
     private val context: Context,
@@ -29,81 +37,94 @@ class OPMLDataSource @Inject constructor(
         targetAccountId: Int,
     ): List<GroupWithFeed> {
         val opml = OpmlParser().parse(inputStream)
-        val groupWithFeedList = mutableListOf<GroupWithFeed>().also {
-            it.addGroup(defaultGroup)
-        }
-
+        val result = ParseResult(defaultGroup)
         for (outline in opml.body.outlines) {
-            // Only feeds
-            if (outline.subElements.isEmpty()) {
-                // It's a empty group
-                if (!outline.attributes.containsKey("xmlUrl")) {
-                    if (!outline.isDefaultGroup()) {
-                        groupWithFeedList.addGroup(
-                            Group(
-                                id = targetAccountId.spacerDollar(UUID.randomUUID().toString()),
-                                name = outline.extractName(),
-                                accountId = targetAccountId,
-                            )
-                        )
-                    }
-                } else {
-                    groupWithFeedList.addFeedToDefault(
-                        Feed(
-                            id = targetAccountId.spacerDollar(UUID.randomUUID().toString()),
-                            name = outline.extractName(),
-                            url = outline.extractUrl() ?: continue,
-                            groupId = defaultGroup.id,
-                            accountId = targetAccountId,
-                            isNotification = outline.extractPresetNotification(),
-                            isFullContent = outline.extractPresetFullContent(),
-                            isBrowser = outline.extractPresetBrowser(),
-                        )
-                    )
-                }
-            } else {
-                var groupId = defaultGroup.id
-                if (!outline.isDefaultGroup()) {
-                    groupId = targetAccountId.spacerDollar(UUID.randomUUID().toString())
-                    groupWithFeedList.addGroup(
-                        Group(
-                            id = groupId,
-                            name = outline.extractName(),
-                            accountId = targetAccountId,
-                        )
-                    )
-                }
-                for (subOutline in outline.subElements) {
-                    if (subOutline != null && subOutline.attributes != null) {
-                        groupWithFeedList.addFeed(
-                            Feed(
-                                id = targetAccountId.spacerDollar(UUID.randomUUID().toString()),
-                                name = subOutline.extractName(),
-                                url = subOutline.extractUrl() ?: continue,
-                                groupId = groupId,
-                                accountId = targetAccountId,
-                                isNotification = subOutline.extractPresetNotification(),
-                                isFullContent = subOutline.extractPresetFullContent(),
-                                isBrowser = subOutline.extractPresetBrowser(),
-                            )
-                        )
-                    }
-                }
-            }
+            walk(outline, result, firstFolder = null, inheritedTags = emptyList(), targetAccountId)
         }
-        return groupWithFeedList
+        return result.groupWithFeedList
     }
 
-    private fun MutableList<GroupWithFeed>.addGroup(group: Group) {
-        add(GroupWithFeed(group = group, feeds = mutableListOf()))
+    private fun walk(
+        outline: Outline?,
+        result: ParseResult,
+        firstFolder: Group?,
+        inheritedTags: List<String>,
+        targetAccountId: Int,
+    ) {
+        if (outline == null || outline.attributes == null) return
+        val tags = inheritedTags + parseTags(outline.attributes["category"])
+        val xmlUrl = outline.extractUrl()
+
+        if (xmlUrl != null) {
+            val group = firstFolder ?: result.defaultGroup
+            result.addFeed(
+                group,
+                Feed(
+                    id = targetAccountId.spacerDollar(UUID.randomUUID().toString()),
+                    name = outline.extractName(),
+                    url = xmlUrl,
+                    groupId = group.id,
+                    accountId = targetAccountId,
+                    isNotification = outline.extractPresetNotification(),
+                    isFullContent = outline.extractPresetFullContent(),
+                    isBrowser = outline.extractPresetBrowser(),
+                    siteUrl = outline.attributes["htmlUrl"] ?: "",
+                    tags = tags.distinct().joinToString(","),
+                )
+            )
+            return
+        }
+
+        // Folder: group from the FIRST folder level only; deeper folders and
+        // folder/category names accumulate into tags (web walk parity).
+        val folderTags = tags + outline.extractName().trim().lowercase(Locale.ROOT)
+            .takeIf { it.isNotEmpty() }.let { listOfNotNull(it) }
+        val folder: Group? = when {
+            outline.isDefaultGroup() -> firstFolder
+            firstFolder == null -> {
+                val group = Group(
+                    id = targetAccountId.spacerDollar(UUID.randomUUID().toString()),
+                    name = outline.extractName(),
+                    accountId = targetAccountId,
+                )
+                result.addGroup(group)
+                group
+            }
+            else -> null // deeper folder: tags only, no display group
+        }
+        val childFirstFolder = folder ?: firstFolder ?: result.defaultGroup
+        for (subOutline in outline.subElements) {
+            walk(subOutline, result, childFirstFolder, folderTags, targetAccountId)
+        }
     }
 
-    private fun MutableList<GroupWithFeed>.addFeed(feed: Feed) {
-        last().feeds.add(feed)
-    }
+    /** Web `parse_tags` port: split, trim, lowercase, drop empties, dedupe order-preserving. */
+    private fun parseTags(value: String?): List<String> =
+        value?.split(',')
+            ?.map { it.trim().lowercase(Locale.ROOT) }
+            ?.filter { it.isNotEmpty() }
+            ?.distinct()
+            ?: emptyList()
 
-    private fun MutableList<GroupWithFeed>.addFeedToDefault(feed: Feed) {
-        first().feeds.add(feed)
+    /** Ordered group list; feeds attach to their group's slot (default group first). */
+    private class ParseResult(val defaultGroup: Group) {
+        val groupWithFeedList = mutableListOf<GroupWithFeed>()
+
+        init {
+            groupWithFeedList.add(GroupWithFeed(group = defaultGroup, feeds = mutableListOf()))
+        }
+
+        fun addGroup(group: Group) {
+            groupWithFeedList.add(GroupWithFeed(group = group, feeds = mutableListOf()))
+        }
+
+        fun addFeed(group: Group, feed: Feed) {
+            val slot = groupWithFeedList.firstOrNull { it.group.id == group.id }
+                ?: GroupWithFeed(group = group, feeds = mutableListOf()).also {
+                    groupWithFeedList.add(it)
+                }
+            slot.feeds.add(feed)
+        }
     }
 
     private fun Outline?.extractName(): String {

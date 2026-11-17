@@ -98,4 +98,43 @@ class OPMLDataSourceTest {
         Assert.assertTrue(feed.isFullContent)
         Assert.assertTrue(feed.isBrowser)
     }
+
+    @Test
+    fun testNestedFolderInheritanceAndSiteUrl() {
+        // S33 web opml.py walk parity: folder names accumulate into tags,
+        // group comes from the FIRST folder level, htmlUrl -> siteUrl.
+        val opml = fill("""
+            <outline text="Tech" title="Tech">
+                <outline text="Android" title="Android" category="mobile">
+                    <outline type="rss" text="Droid Feed" xmlUrl="https://droid.example/feed"
+                        htmlUrl="https://droid.example" category="kotlin, Mobile"/>
+                </outline>
+            </outline>
+        """)
+        val result = parse(opml)
+        Assert.assertEquals(2, result.size)
+        Assert.assertEquals("Default", result[0].group.name)
+        Assert.assertEquals(0, result[0].feeds.size)
+        Assert.assertEquals("Tech", result[1].group.name)
+        Assert.assertEquals(1, result[1].feeds.size)
+        val feed = result[1].feeds[0]
+        // groupId = first folder level
+        Assert.assertEquals(result[1].group.id, feed.groupId)
+        // tags: folder Tech + folder Android's category + feed category,
+        // lowercase, order-preserving dedupe
+        Assert.assertEquals("tech,mobile,android,kotlin", feed.tags)
+        // htmlUrl -> siteUrl
+        Assert.assertEquals("https://droid.example", feed.siteUrl)
+    }
+
+    @Test
+    fun testTopLevelCategoryAttrBecomesTags() {
+        val opml = fill("""
+            <outline type="rss" text="Loose" xmlUrl="https://loose.example/feed.xml"
+                category="news, Tech ,news"/>
+        """)
+        val feed = parse(opml)[0].feeds[0]
+        Assert.assertEquals("news,tech", feed.tags)
+        Assert.assertEquals(defaultGroup.id, feed.groupId)
+    }
 }
