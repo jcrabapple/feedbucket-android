@@ -52,6 +52,7 @@ abstract class AbstractRssRepository(
     private val accountService: AccountService,
     private val actionRuleDao: ActionRuleDao,
     private val stateApplyLedger: StateApplyLedger,
+    private val downloadService: DownloadService,
 ) {
 
     open val importSubscription: Boolean = true
@@ -317,6 +318,8 @@ abstract class AbstractRssRepository(
                     accountId,
                     Date(System.currentTimeMillis() - keepArchived.value),
                 )
+            // S29 — article deletion cascades its download files (same action).
+            downloadService.deleteFilesFor(archivedArticles.map { it.id })
             articleDao.delete(*archivedArticles.toTypedArray())
             return archivedArticles.also {
                 feedDao.insertArchivedArticles(
@@ -536,6 +539,21 @@ abstract class AbstractRssRepository(
         feed: Feed? = null,
         includeStarred: Boolean = false,
     ) {
+        // S29 — delete download files for exactly the rows the DELETE will
+        // remove (same predicates, so files never outlive their articles and
+        // surviving articles keep their downloads).
+        val currentAccountId = accountService.getCurrentAccountId()
+        when {
+            group != null ->
+                downloadService.deleteFilesFor(
+                    articleDao.queryIdsByGroupId(currentAccountId, group.id, includeStarred)
+                )
+
+            feed != null ->
+                downloadService.deleteFilesFor(
+                    articleDao.queryIdsByFeedId(currentAccountId, feed.id, includeStarred)
+                )
+        }
         when {
             group != null ->
                 articleDao.deleteByGroupId(
@@ -554,6 +572,8 @@ abstract class AbstractRssRepository(
     }
 
     suspend fun deleteAccountArticles(accountId: Int) {
+        // S29 — account deletion cascades all its download files.
+        downloadService.deleteFilesFor(articleDao.queryIdsByAccountId(accountId))
         articleDao.deleteByAccountId(accountId)
     }
 

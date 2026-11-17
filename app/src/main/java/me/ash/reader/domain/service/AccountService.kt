@@ -40,6 +40,7 @@ constructor(
     private val groupDao: GroupDao,
     private val feedDao: FeedDao,
     private val articleDao: ArticleDao,
+    private val downloadService: DownloadService,
     @ApplicationScope private val coroutineScope: CoroutineScope,
     settingsProvider: SettingsProvider,
 ) {
@@ -138,6 +139,8 @@ constructor(
             return
         }
         accountDao.queryById(accountId)?.let {
+            // S29 — account deletion cascades all its download files.
+            downloadService.deleteFilesFor(articleDao.queryIdsByAccountId(accountId))
             articleDao.deleteByAccountId(accountId)
             feedDao.deleteByAccountId(accountId)
             groupDao.deleteByAccountId(accountId)

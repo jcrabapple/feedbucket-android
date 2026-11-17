@@ -27,6 +27,7 @@ object AccountServiceModule {
         groupDao: GroupDao,
         feedDao: FeedDao,
         articleDao: ArticleDao,
+        downloadService: me.ash.reader.domain.service.DownloadService,
         @ApplicationScope coroutineScope: CoroutineScope,
         settingsProvider: SettingsProvider,
     ): AccountService {
@@ -36,6 +37,7 @@ object AccountServiceModule {
             groupDao = groupDao,
             feedDao = feedDao,
             articleDao = articleDao,
+            downloadService = downloadService,
             coroutineScope = coroutineScope,
             settingsProvider = settingsProvider,
         )

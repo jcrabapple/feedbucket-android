@@ -47,6 +47,7 @@ constructor(
     private val workManager: WorkManager,
     private val accountService: AccountService,
     private val syncLogger: SyncLogger,
+    private val downloadService: DownloadService,
 ) :
     AbstractRssRepository(
         articleDao,
@@ -60,6 +61,7 @@ constructor(
         accountService,
         actionRuleDao,
         stateApplyLedger,
+        downloadService,
     ) {
 
     override suspend fun sync(

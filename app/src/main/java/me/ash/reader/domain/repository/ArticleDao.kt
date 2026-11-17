@@ -264,6 +264,17 @@ interface ArticleDao {
     )
     suspend fun deleteByFeedId(accountId: Int, feedId: String, includeStarred: Boolean = false)
 
+    /** S29 — ids matching deleteByFeedId, for download file cascade. */
+    @Query(
+        """
+        SELECT id FROM article
+        WHERE accountId = :accountId
+        AND feedId = :feedId
+        AND (isStarred = :includeStarred OR :includeStarred = 1)
+        """
+    )
+    suspend fun queryIdsByFeedId(accountId: Int, feedId: String, includeStarred: Boolean): List<String>
+
     @Query(
         """
         DELETE FROM article
@@ -278,6 +289,17 @@ interface ArticleDao {
         """
     )
     suspend fun deleteByGroupId(accountId: Int, groupId: String, includeStarred: Boolean = false)
+
+    /** S29 — ids matching deleteByGroupId, for download file cascade. */
+    @Query(
+        """
+        SELECT id FROM article
+        WHERE accountId = :accountId
+        AND feedId IN (SELECT id FROM feed WHERE groupId = :groupId)
+        AND (isStarred = :includeStarred OR :includeStarred = 1)
+        """
+    )
+    suspend fun queryIdsByGroupId(accountId: Int, groupId: String, includeStarred: Boolean): List<String>
 
     @Query(
         """
@@ -1294,6 +1316,10 @@ interface ArticleDao {
     /** S28 — bulk "download all in scope" source (capped by DownloadPolicy). */
     @Query("SELECT id FROM article WHERE accountId = :accountId AND isUnread = 1")
     suspend fun queryUnreadIds(accountId: Int): List<String>
+
+    /** S29 — ids matching deleteByAccountId, for download file cascade. */
+    @Query("SELECT id FROM article WHERE accountId = :accountId")
+    suspend fun queryIdsByAccountId(accountId: Int): List<String>
 }
 
 /** S7 — identity match: guid equality (both non-empty) OR link equality. */

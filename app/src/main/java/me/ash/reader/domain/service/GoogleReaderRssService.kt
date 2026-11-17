@@ -80,6 +80,7 @@ constructor(
     private val syncLogger: SyncLogger,
     actionRuleDao: ActionRuleDao,
     stateApplyLedger: StateApplyLedger,
+    downloadService: DownloadService,
 ) :
     AbstractRssRepository(
         articleDao,
@@ -93,6 +94,7 @@ constructor(
         accountService,
         actionRuleDao,
         stateApplyLedger,
+        downloadService,
     ) {
 
     override val importSubscription: Boolean = false
