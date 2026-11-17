@@ -7,8 +7,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -16,7 +19,10 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.ImportExport
 import androidx.compose.material.icons.outlined.SyncAlt
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +31,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -194,6 +202,16 @@ fun MigrationPage(
 
     // Sheet states (UI-CONTRACT §6.10 sequence).
     when (state.stage) {
+        MigrationViewModel.Stage.RETAINING ->
+            ImportStatusSheet(
+                titleRes = R.string.migration_retaining,
+                detailRes = null,
+            )
+        MigrationViewModel.Stage.VALIDATING ->
+            ImportStatusSheet(
+                titleRes = R.string.migration_validating,
+                detailRes = R.string.migration_validating_detail,
+            )
         MigrationViewModel.Stage.PREVIEW ->
             ImportPreviewSheet(
                 preview = state.preview,
@@ -203,6 +221,8 @@ fun MigrationPage(
         MigrationViewModel.Stage.APPLYING ->
             ImportResultSheet(
                 applying = true,
+                applyingFeed = state.applyingFeed,
+                applyingLedger = state.applyingLedger,
                 result = null,
                 onRetry = { viewModel.retryImport() },
                 onDone = { viewModel.done() },
@@ -212,6 +232,8 @@ fun MigrationPage(
         MigrationViewModel.Stage.RESULT ->
             ImportResultSheet(
                 applying = false,
+                applyingFeed = null,
+                applyingLedger = null,
                 result = state.result,
                 onRetry = { viewModel.retryImport() },
                 onDone = { viewModel.done() },
@@ -219,6 +241,42 @@ fun MigrationPage(
                 removalReport = state.removalReport,
             )
         else -> Unit
+    }
+}
+
+/**
+ * Transient RETAINING / VALIDATING state sheet (UI-CONTRACT §6.10): literal
+ * status copy + indeterminate progress, no dismiss while work is in flight.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ImportStatusSheet(
+    titleRes: Int,
+    detailRes: Int?,
+) {
+    ModalBottomSheet(onDismissRequest = {}) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+        ) {
+            Text(
+                text = stringResource(titleRes),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
+            )
+            detailRes?.let {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(it),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 
@@ -244,6 +302,10 @@ constructor(
 
     sealed interface RunResult {
         data class Completed(val ledger: ImportLedger) : RunResult
+
+        /** Bounded chunk failures: imported chunks stay, retry offered. */
+        data class Partial(val ledger: ImportLedger) : RunResult
+
         data class Failed(val reason: String) : RunResult
     }
 
@@ -252,6 +314,8 @@ constructor(
         val runId: Long? = null,
         val preview: ImportPreview? = null,
         val result: RunResult? = null,
+        val applyingFeed: String? = null,
+        val applyingLedger: ImportLedger? = null,
         val removalReport: FeedBucketImporter.RemovalReport? = null,
         val resumableRun: ImportRun? = null,
         val opmlResult: OpmlService.OpmlImportResult? = null,
@@ -265,7 +329,7 @@ constructor(
     init {
         // Resumable-run indicator (S32a step 6) + orphan GC (S32a step 8).
         viewModelScope.launch {
-            _uiState.update { it.copy(resumableRun = importer.runningRun()) }
+            _uiState.update { it.copy(resumableRun = importer.resumableRun()) }
             applicationScope.launch { importer.gcOrphanCopies() }
         }
     }
@@ -316,16 +380,46 @@ constructor(
         val runId = state.runId ?: return
         val preview = state.preview ?: return
         viewModelScope.launch {
-            _uiState.update { it.copy(stage = Stage.APPLYING) }
-            when (val outcome = importer.apply(runId, preview.fingerprint)) {
+            _uiState.update {
+                it.copy(stage = Stage.APPLYING, applyingFeed = null, applyingLedger = null)
+            }
+            when (
+                val outcome = importer.apply(
+                    runId,
+                    preview.fingerprint,
+                    onProgress = { feedTitle, ledger ->
+                        _uiState.update {
+                            it.copy(applyingFeed = feedTitle, applyingLedger = ledger)
+                        }
+                    },
+                )
+            ) {
                 is FeedBucketImporter.ApplyOutcome.Completed ->
                     _uiState.update {
-                        it.copy(stage = Stage.RESULT, result = RunResult.Completed(outcome.ledger))
+                        it.copy(
+                            stage = Stage.RESULT,
+                            runId = outcome.runId,
+                            applyingFeed = null,
+                            applyingLedger = null,
+                            result = RunResult.Completed(outcome.ledger),
+                        )
+                    }
+                is FeedBucketImporter.ApplyOutcome.Partial ->
+                    _uiState.update {
+                        it.copy(
+                            stage = Stage.RESULT,
+                            runId = outcome.runId,
+                            applyingFeed = null,
+                            applyingLedger = null,
+                            result = RunResult.Partial(outcome.ledger),
+                        )
                     }
                 is FeedBucketImporter.ApplyOutcome.FingerprintMismatch ->
                     _uiState.update {
                         it.copy(
                             stage = Stage.RESULT,
+                            applyingFeed = null,
+                            applyingLedger = null,
                             result = RunResult.Failed(
                                 "The file changed between preview and import. Nothing was imported.",
                             ),
@@ -333,11 +427,21 @@ constructor(
                     }
                 is FeedBucketImporter.ApplyOutcome.Rejected ->
                     _uiState.update {
-                        it.copy(stage = Stage.RESULT, result = RunResult.Failed(outcome.reason))
+                        it.copy(
+                            stage = Stage.RESULT,
+                            applyingFeed = null,
+                            applyingLedger = null,
+                            result = RunResult.Failed(outcome.reason),
+                        )
                     }
                 is FeedBucketImporter.ApplyOutcome.SourceLost ->
                     _uiState.update {
-                        it.copy(stage = Stage.RESULT, result = RunResult.Failed("Retained copy missing"))
+                        it.copy(
+                            stage = Stage.RESULT,
+                            applyingFeed = null,
+                            applyingLedger = null,
+                            result = RunResult.Failed("Retained copy missing"),
+                        )
                     }
             }
         }
@@ -357,17 +461,48 @@ constructor(
     /** Retry/resume a failed or interrupted run against the retained copy. */
     fun retryImport() {
         viewModelScope.launch {
-            _uiState.update { it.copy(stage = Stage.APPLYING, result = null) }
-            when (val outcome = importer.resume()) {
+            _uiState.update {
+                it.copy(
+                    stage = Stage.APPLYING,
+                    result = null,
+                    applyingFeed = null,
+                    applyingLedger = null,
+                )
+            }
+            when (
+                val outcome = importer.resume { feedTitle, ledger ->
+                    _uiState.update {
+                        it.copy(applyingFeed = feedTitle, applyingLedger = ledger)
+                    }
+                }
+            ) {
                 null -> _uiState.update { it.copy(stage = Stage.IDLE) }
                 is FeedBucketImporter.ApplyOutcome.Completed ->
                     _uiState.update {
-                        it.copy(stage = Stage.RESULT, result = RunResult.Completed(outcome.ledger))
+                        it.copy(
+                            stage = Stage.RESULT,
+                            runId = outcome.runId,
+                            applyingFeed = null,
+                            applyingLedger = null,
+                            result = RunResult.Completed(outcome.ledger),
+                        )
+                    }
+                is FeedBucketImporter.ApplyOutcome.Partial ->
+                    _uiState.update {
+                        it.copy(
+                            stage = Stage.RESULT,
+                            runId = outcome.runId,
+                            applyingFeed = null,
+                            applyingLedger = null,
+                            result = RunResult.Partial(outcome.ledger),
+                        )
                     }
                 is FeedBucketImporter.ApplyOutcome.FingerprintMismatch ->
                     _uiState.update {
                         it.copy(
                             stage = Stage.RESULT,
+                            applyingFeed = null,
+                            applyingLedger = null,
                             result = RunResult.Failed(
                                 "The retained source changed. Nothing was imported.",
                             ),
@@ -375,11 +510,21 @@ constructor(
                     }
                 is FeedBucketImporter.ApplyOutcome.Rejected ->
                     _uiState.update {
-                        it.copy(stage = Stage.RESULT, result = RunResult.Failed(outcome.reason))
+                        it.copy(
+                            stage = Stage.RESULT,
+                            applyingFeed = null,
+                            applyingLedger = null,
+                            result = RunResult.Failed(outcome.reason),
+                        )
                     }
                 is FeedBucketImporter.ApplyOutcome.SourceLost ->
                     _uiState.update {
-                        it.copy(stage = Stage.RESULT, result = RunResult.Failed("Retained copy missing"))
+                        it.copy(
+                            stage = Stage.RESULT,
+                            applyingFeed = null,
+                            applyingLedger = null,
+                            result = RunResult.Failed("Retained copy missing"),
+                        )
                     }
             }
         }
@@ -406,7 +551,7 @@ constructor(
                     preview = null,
                     result = null,
                     removalReport = null,
-                    resumableRun = importer.runningRun(),
+                    resumableRun = importer.resumableRun(),
                 )
             }
         }

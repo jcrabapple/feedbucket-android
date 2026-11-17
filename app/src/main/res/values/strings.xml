@@ -472,6 +472,8 @@
     <string name="migration_opml_result">Imported %1$d · skipped %2$d</string>
     <string name="migration_retaining">Making a private working copy on this device.</string>
     <string name="migration_validating">Validating…</string>
+    <string name="migration_validating_detail">Checking schema, package version, required tables and the secret guard. Nothing is written yet.</string>
+    <string name="migration_current_feed">Current feed: %1$s</string>
     <string name="migration_preview_title">Import preview</string>
     <string name="migration_kind_package">FeedBucket v1 package</string>
     <string name="migration_kind_raw">Raw database copy</string>
@@ -494,6 +496,7 @@
     <string name="migration_applying">Applying import…</string>
     <string name="migration_resumable_hint">Leaving shows the run status; the import can be resumed.</string>
     <string name="migration_result_completed">Import completed</string>
+    <string name="migration_result_partial">Import incomplete · failed items are listed below and can be retried</string>
     <string name="migration_result_failed">Import failed · nothing further was written</string>
     <string name="migration_ledger_imported">Imported</string>
     <string name="migration_ledger_skipped">Skipped (already present)</string>

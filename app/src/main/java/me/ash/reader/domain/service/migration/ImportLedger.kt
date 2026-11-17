@@ -41,11 +41,7 @@ data class ImportLedger(
 
             val failures = Regex(""""failures":\[(.*)\]""")
                 .find(json)?.groupValues?.get(1).orEmpty()
-                .splitToSequence(",")
-                .map { it.trim() }
-                .filter { it.length >= 2 }
-                .map { unescape(it.substring(1, it.length - 1)) }
-                .toList()
+                .let { parseJsonStringArray(it) }
             return ImportLedger(
                 imported = num("imported"),
                 skipped = num("skipped"),
@@ -54,6 +50,52 @@ data class ImportLedger(
                 rulesImported = num("rulesImported"),
                 failures = failures,
             )
+        }
+
+        /**
+         * Parses the hand-rolled `"a","b"` failures payload with FULL JSON
+         * string semantics (review round 1 finding 4): commas, quotes,
+         * backslashes and unicode escapes INSIDE a string never split or
+         * corrupt neighbouring entries. The old split(",") implementation
+         * turned `feed 2 (Alpha, News): ... feed.url, accountId` into
+         * fragments.
+         */
+        internal fun parseJsonStringArray(payload: String): List<String> {
+            val result = mutableListOf<String>()
+            var i = 0
+            while (i < payload.length) {
+                when {
+                    payload[i].isWhitespace() || payload[i] == ',' -> i += 1
+                    payload[i] == '"' -> {
+                        val sb = StringBuilder()
+                        i += 1
+                        while (i < payload.length && payload[i] != '"') {
+                            if (payload[i] == '\\' && i + 1 < payload.length) {
+                                when (payload[i + 1]) {
+                                    '"' -> sb.append('"')
+                                    '\\' -> sb.append('\\')
+                                    'n' -> sb.append('\n')
+                                    'r' -> sb.append('\r')
+                                    't' -> sb.append('\t')
+                                    'u' -> {
+                                        sb.append(payload.substring(i + 2, i + 6).toInt(16).toChar())
+                                        i += 4
+                                    }
+                                    else -> sb.append(payload[i + 1])
+                                }
+                                i += 2
+                            } else {
+                                sb.append(payload[i])
+                                i += 1
+                            }
+                        }
+                        i += 1 // closing quote
+                        result.add(sb.toString())
+                    }
+                    else -> i += 1
+                }
+            }
+            return result
         }
 
         internal fun escape(value: String): String = buildString(value.length) {
@@ -65,30 +107,6 @@ data class ImportLedger(
                     '\r' -> append("\\r")
                     '\t' -> append("\\t")
                     else -> if (ch.code < 0x20) append("\\u%04x".format(ch.code)) else append(ch)
-                }
-            }
-        }
-
-        internal fun unescape(value: String): String = buildString(value.length) {
-            var i = 0
-            while (i < value.length) {
-                if (value[i] == '\\' && i + 1 < value.length) {
-                    when (value[i + 1]) {
-                        '"' -> append('"')
-                        '\\' -> append('\\')
-                        'n' -> append('\n')
-                        'r' -> append('\r')
-                        't' -> append('\t')
-                        'u' -> {
-                            append(value.substring(i + 2, i + 6).toInt(16).toChar())
-                            i += 4
-                        }
-                        else -> append(value[i + 1])
-                    }
-                    i += 2
-                } else {
-                    append(value[i])
-                    i += 1
                 }
             }
         }

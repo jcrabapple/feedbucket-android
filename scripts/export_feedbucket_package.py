@@ -222,13 +222,8 @@ def gate_secret_scan(pkg_path: Path) -> None:
         for table in tables:
             cols = [r[1] for r in pkg.execute(f"PRAGMA table_info({table})")]
             for col in cols:
-                probe = pkg.execute(
-                    f"SELECT typeof({col}) FROM {table} WHERE {col} IS NOT NULL LIMIT 1"
-                ).fetchone()
-                if not probe or probe[0] != "text":
-                    continue
                 hits = pkg.execute(
-                    f"SELECT {col} FROM {table} WHERE {col} IS NOT NULL"
+                    f'SELECT "{col}" FROM "{table}" WHERE "{col}" IS NOT NULL'
                 ).fetchall()
                 for (value,) in hits:
                     if isinstance(value, str) and TOKEN_VALUE_RE.search(value):

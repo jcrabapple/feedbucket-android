@@ -48,4 +48,27 @@ object SecretGuard {
         val hits = tokenShapedValues(values)
         require(hits.isEmpty()) { "token-shaped imported value detected" }
     }
+
+    /**
+     * Value-level guard over the SOURCE, enforced in production BEFORE ANY
+     * target write (S32a step 2; review round 1 finding 1): every allowlisted
+     * column of every allowlisted table is scanned for token-shaped values —
+     * never just the first row's storage class. Returns the offending values
+     * (empty = clean). `users` is not in the allowlist, so its secret columns
+     * cannot be reached here at all.
+     */
+    fun scanSourceValues(source: FeedBucketImporter.SourceDb): List<String> {
+        val hits = mutableListOf<String>()
+        for ((table, columns) in ImportSchemaChecker.TABLE_COLUMNS) {
+            if (!source.tableExists(table)) continue
+            for (column in columns) {
+                hits += tokenShapedValues(
+                    source.query(
+                        """SELECT "$column" FROM "$table" WHERE "$column" IS NOT NULL""",
+                    ).asSequence().map { it.values.singleOrNull() },
+                )
+            }
+        }
+        return hits
+    }
 }

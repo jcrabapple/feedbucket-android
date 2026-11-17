@@ -187,6 +187,12 @@ class MigrationImporterTest {
             whenever(importDao.queryRunningRun()).thenAnswer {
                 runs.values.filter { it.state == ImportRun.STATE_RUNNING }.maxByOrNull { it.id }
             }
+            whenever(importDao.queryResumableRun()).thenAnswer {
+                runs.values.filter {
+                    it.state == ImportRun.STATE_RUNNING ||
+                        (it.state == ImportRun.STATE_FAILED && it.sourcePath != null)
+                }.maxByOrNull { it.id }
+            }
             whenever(importDao.queryLatestRun(any())).thenAnswer { invocation ->
                 runs.values.filter { it.kind == invocation.getArgument<String>(0) }
                     .maxByOrNull { run -> run.id }
@@ -336,6 +342,29 @@ class MigrationImporterTest {
 
     private fun stageFile(file: File): Long = runBlocking {
         importer.stageCopy(file.inputStream(), "content://picked/${file.name}", now)
+    }
+
+    /**
+     * A FRESH importer over the SAME DAO state + imports dir — simulates
+     * process recreation against persisted run/identity data.
+     */
+    private fun newImporter(): FeedBucketImporter {
+        val io: CoroutineDispatcher = Dispatchers.Unconfined
+        return FeedBucketImporter(
+            importsRoot = importerDir(),
+            feedDao = feedDao,
+            groupDao = groupDao,
+            articleDao = articleDao,
+            savedSearchDao = savedSearchDao,
+            actionRuleDao = actionRuleDao,
+            importDao = importDao,
+            accountService = accountService,
+            ioDispatcher = io,
+        ).apply {
+            openSource = { file ->
+                JdbcSourceDb.open(file).also { lastSource = it }
+            }
+        }
     }
 
     private fun previewReady(runId: Long) = runBlocking {
@@ -709,12 +738,245 @@ class MigrationImporterTest {
     @Test
     fun ledgerJsonRoundTripsWithEscapes() {
         val ledger = ImportLedger(
-            imported = 3, skipped = 2, failed = 1,
+            imported = 3, skipped = 2, failed = 3,
             searchesImported = 2, rulesImported = 1,
-            failures = listOf("entry 103: bad \"quote\" and \\ slash", "feed 2: boom"),
+            failures = listOf(
+                "entry 103: bad \"quote\" and \\ slash",
+                // Commas inside failure text must not split entries
+                // (review round 1 finding 4).
+                "feed 2 (Alpha, News): boom at feed.url, accountId",
+                "comma, then \"quote\", then \\backslash\\, end",
+            ),
         )
         assertEquals(ledger, ImportLedger.fromJson(ledger.toJson()))
         assertEquals(ImportLedger(), ImportLedger.fromJson(ImportLedger().toJson()))
+    }
+
+    // ------------------------------------------------------------------
+    // Review round 1 — blocking-finding regression tests
+    // ------------------------------------------------------------------
+
+    @Test
+    fun previewRejectsTokenShapedSourceValueWithNothingWritten() = runBlocking {
+        val fixture = File(tmp.root, "evil-preview.db")
+        buildWebFixtureDb(fixture)
+        DriverManager.getConnection("jdbc:sqlite:${fixture.absolutePath}").use { c ->
+            c.createStatement().use {
+                it.executeUpdate(
+                    "UPDATE entries SET title = " +
+                        "'abcdefghijklmnopqrstuvwxyz0123456789.ABCDEFGHIJKLMNOP' " +
+                        "WHERE id = 101",
+                )
+            }
+        }
+        val runId = stageFile(fixture)
+        val before = targetDigest()
+
+        val outcome = importer.preview(runId)
+        assertTrue(
+            "expected Rejected, got $outcome",
+            outcome is FeedBucketImporter.PreviewOutcome.Rejected,
+        )
+        val reason = (outcome as FeedBucketImporter.PreviewOutcome.Rejected).reason
+        assertTrue("precise reason, got: $reason", reason.contains("token", ignoreCase = true))
+        assertEquals(before, targetDigest())
+        assertEquals(0, feeds.size + articles.size)
+        assertEquals(ImportRun.STATE_FAILED, runs.getValue(runId).state)
+        // Secret-bearing retained copy must not linger on disk.
+        assertNull(runs.getValue(runId).sourcePath)
+    }
+
+    @Test
+    fun applyRejectsTokenShapedSourceValueWithZeroWrites() = runBlocking {
+        val fixture = File(tmp.root, "evil-apply.db")
+        buildWebFixtureDb(fixture)
+        DriverManager.getConnection("jdbc:sqlite:${fixture.absolutePath}").use { c ->
+            c.createStatement().use {
+                it.executeUpdate(
+                    "UPDATE entries SET title = " +
+                        "'abcdefghijklmnopqrstuvwxyz0123456789.ABCDEFGHIJKLMNOP' " +
+                        "WHERE id = 101",
+                )
+            }
+        }
+        val runId = stageFile(fixture)
+        val fingerprint = runs.getValue(runId).sourceFingerprint
+        val before = targetDigest()
+
+        val outcome = importer.apply(runId, fingerprint, now)
+        assertTrue(
+            "expected Rejected, got $outcome",
+            outcome is FeedBucketImporter.ApplyOutcome.Rejected,
+        )
+        val reason = (outcome as FeedBucketImporter.ApplyOutcome.Rejected).reason
+        assertTrue("precise reason, got: $reason", reason.contains("token", ignoreCase = true))
+        assertEquals(before, targetDigest())
+        assertEquals(0, feeds.size + articles.size)
+        assertEquals(ImportRun.STATE_FAILED, runs.getValue(runId).state)
+        assertNull(runs.getValue(runId).sourcePath)
+    }
+
+    @Test
+    fun importedHtmlIsSanitizedAtWriteTime() = runBlocking {
+        val fixture = File(tmp.root, "dirty.db")
+        buildWebFixtureDb(fixture)
+        DriverManager.getConnection("jdbc:sqlite:${fixture.absolutePath}").use { c ->
+            c.createStatement().use {
+                it.executeUpdate(
+                    """UPDATE entries SET content =
+                        '<p>safe body</p><script>alert(1)</script><img src="javascript:evil()" onerror="boom()">'
+                        WHERE id = 102""".trimIndent(),
+                )
+                it.executeUpdate(
+                    """UPDATE entries SET original_content =
+                        '<style>bad{}</style><p>orig safe</p><a href="file:///etc/passwd" onclick="x()">link</a>'
+                        WHERE id = 101""".trimIndent(),
+                )
+            }
+        }
+        val runId = stageFile(fixture)
+        applyCompleted(runId, previewReady(runId).fingerprint)
+
+        val a101 = articles.getValue(
+            expectedArticleId("https://alpha.example/feed.xml", "guid-a1"),
+        )
+        // a101 rawDescription/originalContent derive from original_content.
+        for (html in listOf(a101.rawDescription, a101.originalContent)) {
+            assertNotNull(html)
+            assertFalse(html!!.contains("<script"))
+            assertFalse(html.contains("<style"))
+            assertFalse(html.contains("onerror"))
+            assertFalse(html.contains("onclick"))
+            assertFalse(html.contains("javascript:"))
+            assertFalse(html.contains("file:"))
+            assertTrue(html.contains("<p>orig safe</p>"))
+        }
+
+        // a102: extracted=1 => fullContent derives from the dirty content.
+        val a102 = articles.getValue(
+            expectedArticleId("https://alpha.example/feed.xml", "guid-a2"),
+        )
+        val full = a102.fullContent
+        assertNotNull(full)
+        assertFalse(full!!.contains("<script"))
+        assertFalse(full.contains("onerror"))
+        assertFalse(full.contains("javascript:"))
+        assertTrue(full.contains("<p>safe body</p>"))
+    }
+
+    @Test
+    fun chunkFailureStaysRetryableAndResumeCompletes() = runBlocking {
+        val fixture = File(tmp.root, "fixture.db")
+        buildWebFixtureDb(fixture)
+        val runId = stageFile(fixture)
+        val preview = previewReady(runId)
+
+        // Feed 2's chunk fails (injected constraint error -> tx rollback).
+        failFeedInsertWithUrl = "https://beta.example/rss"
+        val outcome = importer.apply(runId, preview.fingerprint, now)
+        assertTrue(
+            "expected Partial, got $outcome",
+            outcome is FeedBucketImporter.ApplyOutcome.Partial,
+        )
+        val partial = outcome as FeedBucketImporter.ApplyOutcome.Partial
+        assertEquals(2, partial.ledger.imported)
+        assertEquals(1, partial.ledger.failed)
+        assertEquals(ImportRun.STATE_RUNNING, runs.getValue(runId).state)
+        // Source preserved while Retry exists: Done/leave must NOT purge.
+        val retained = File(importerDir(), "run-$runId.db")
+        assertTrue(retained.exists())
+        importer.purgeOnTerminalLeave(runId)
+        assertTrue("RUNNING run's source survives Done/leave", retained.exists())
+        assertEquals(2, feeds.size)
+
+        // Retry/resume: failed chunk now imports; earlier chunks skip-count.
+        failFeedInsertWithUrl = null
+        val resumed = importer.resume()
+        assertTrue(
+            "expected Completed, got $resumed",
+            resumed is FeedBucketImporter.ApplyOutcome.Completed,
+        )
+        val resumeLedger = (resumed as FeedBucketImporter.ApplyOutcome.Completed).ledger
+        assertEquals(1, resumeLedger.imported)
+        assertEquals(2, resumeLedger.skipped)
+        assertEquals(0, resumeLedger.failed)
+        assertEquals(ImportRun.STATE_COMPLETED, runs.getValue(runId).state)
+        assertEquals(3, feeds.size)
+        assertEquals(7, articles.size)
+    }
+
+    @Test
+    fun failedRunWithRetainedSourceResumesAfterProcessRecreation() = runBlocking {
+        val fixture = File(tmp.root, "fixture.db")
+        buildWebFixtureDb(fixture)
+        val runId = stageFile(fixture)
+
+        // Persist a FAILED run whose retained copy survived (e.g. process
+        // kill between the failure-state write and any purge). Nothing
+        // imported yet.
+        runs[runId] = runs.getValue(runId).copy(
+            state = ImportRun.STATE_FAILED,
+            finishedAt = now,
+        )
+
+        // Fresh importer over the same persisted state = process recreation.
+        val recreated = newImporter()
+        assertEquals(runId, recreated.resumableRun()?.id)
+
+        val resumed = recreated.resume()
+        assertTrue(
+            "expected Completed, got $resumed",
+            resumed is FeedBucketImporter.ApplyOutcome.Completed,
+        )
+        assertEquals(3, feeds.size)
+        assertEquals(7, articles.size)
+
+        // Removal works after a resumed completion (runId provenance intact).
+        val report = recreated.removeImported(runId)
+        assertEquals(7 + 3 + 2 + 2, report.removed)
+        assertEquals(0, report.skippedEdited + report.skippedProtected)
+        assertEquals(0, feeds.size + articles.size)
+    }
+
+    @Test
+    fun purgedFailedRunIsNotResumable() = runBlocking {
+        val fixture = File(tmp.root, "fixture.db")
+        buildWebFixtureDb(fixture)
+        val runId = stageFile(fixture)
+        runs[runId] = runs.getValue(runId).copy(
+            state = ImportRun.STATE_FAILED,
+            sourcePath = null,
+            finishedAt = now,
+        )
+
+        val recreated = newImporter()
+        assertNull(recreated.resumableRun())
+        assertNull(recreated.resume())
+    }
+
+    @Test
+    fun removeImportedIsOrderIndependentFeedFirst() = runBlocking {
+        val fixture = File(tmp.root, "fixture.db")
+        buildWebFixtureDb(fixture)
+        val runId = stageFile(fixture)
+        applyCompleted(runId, previewReady(runId).fingerprint)
+
+        // Simulate a DAO returning FEED identities BEFORE their ARTICLE rows
+        // (legal without ORDER BY; review round 1 finding 5): every feed
+        // guard must still see the complete article deletion set.
+        val feedFirst = identities.sortedWith(
+            compareBy { if (it.targetKind == ImportIdentity.TARGET_FEED) 0 else 1 },
+        )
+        identities.clear()
+        identities.addAll(feedFirst)
+        assertEquals(ImportIdentity.TARGET_FEED, identities.first().targetKind)
+
+        val report = importer.removeImported(runId)
+        assertEquals(7 + 3 + 2 + 2, report.removed)
+        assertEquals(0, report.skippedEdited)
+        assertEquals(0, report.skippedProtected)
+        assertEquals(0, feeds.size + articles.size)
+        assertEquals(0, searches.size + rules.size)
     }
 
     companion object {

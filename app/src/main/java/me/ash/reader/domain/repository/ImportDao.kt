@@ -37,9 +37,26 @@ interface ImportDao {
     // --- Wave G (S32a): resume/remove/GC support. Queries below never
     // reference the web `users` table (SecretGuard-allowlisted source). ---
 
-    /** S32a step 7 — every identity row this run CREATED (provenance set). */
-    @Query("SELECT * FROM import_identity WHERE createdByRunId = :runId")
+    /** S32a step 7 — every identity row this run CREATED (provenance set).
+     *  Deterministic order: removal is a two-phase algorithm and must never
+     *  depend on default DAO row order. */
+    @Query("SELECT * FROM import_identity WHERE createdByRunId = :runId ORDER BY targetKind, sourceId, targetId")
     suspend fun queryCreatedIdentitiesByRun(runId: Long): List<ImportIdentity>
+
+    /**
+     * S32a steps 6/8 — the latest RETRYABLE run: 'running', or 'failed' with
+     * the retained copy still on disk (retry after fingerprint mismatch /
+     * apply-time failure; review round 1 finding 4). Failed runs whose copy
+     * was purged are not retryable and are excluded by sourcePath IS NOT NULL.
+     */
+    @Query(
+        """
+        SELECT * FROM import_run
+        WHERE state = 'running' OR (state = 'failed' AND sourcePath IS NOT NULL)
+        ORDER BY id DESC LIMIT 1
+        """,
+    )
+    suspend fun queryResumableRun(): ImportRun?
 
     /** S32a — all identity rows recorded by a run (removed after removal). */
     @Query("SELECT * FROM import_identity WHERE importRunId = :runId")

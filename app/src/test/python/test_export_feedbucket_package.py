@@ -124,6 +124,34 @@ class ExportPackageToolTest(unittest.TestCase):
         self.assertIn("starred", result.stderr)
         self.assertFalse(broken_out.exists())
 
+    def test_mixed_storage_class_token_detected(self) -> None:
+        # Regression (review round 1, finding 1): a column whose FIRST
+        # non-null value is an integer (entries.extracted = 0) but a LATER
+        # row carries token-shaped TEXT must still be scanned value-by-value.
+        # The old typeof-probe implementation skipped the whole column and
+        # shipped the token with rc=0.
+        mixed = self.root / "mixed.db"
+        mixed_out = self.root / "mixed.sqlite"
+        subprocess.run(
+            [sys.executable, str(MAKE_DB), "raw", str(mixed)],
+            check=True,
+            capture_output=True,
+        )
+        token = "abcdefghijklmnopqrstuvwxyz0123456789.ABCDEFGHIJKLMNOP"
+        conn = sqlite3.connect(mixed)
+        try:
+            conn.execute(
+                "UPDATE entries SET extracted = ? WHERE id = 102", (token,)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = run_tool(mixed, mixed_out)
+        self.assertEqual(1, result.returncode, result.stderr + result.stdout)
+        self.assertIn("token-shaped value", result.stderr)
+        self.assertFalse(mixed_out.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

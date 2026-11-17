@@ -1,12 +1,10 @@
 package me.ash.reader.domain.service
 
-import android.content.Context
 import be.ceau.opml.OpmlWriter
 import be.ceau.opml.entity.Body
 import be.ceau.opml.entity.Head
 import be.ceau.opml.entity.Opml
 import be.ceau.opml.entity.Outline
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.feed.Feed
@@ -14,7 +12,6 @@ import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
 import me.ash.reader.infrastructure.di.IODispatcher
 import me.ash.reader.infrastructure.rss.OPMLDataSource
-import me.ash.reader.ui.ext.currentAccountId
 import me.ash.reader.ui.ext.getDefaultGroupId
 import java.io.InputStream
 import java.util.*
@@ -24,8 +21,6 @@ import javax.inject.Inject
  * Supports import and export from OPML files.
  */
 class OpmlService @Inject constructor(
-    @ApplicationContext
-    private val context: Context,
     private val groupDao: GroupDao,
     private val feedDao: FeedDao,
     private val accountService: AccountService,
@@ -55,9 +50,10 @@ class OpmlService @Inject constructor(
     @Throws(Exception::class)
     suspend fun saveToDatabase(inputStream: InputStream): OpmlImportResult {
         return withContext(ioDispatcher) {
-            val defaultGroup = groupDao.queryById(getDefaultGroupId(context.currentAccountId))!!
+            val accountId = accountService.getCurrentAccountId()
+            val defaultGroup = groupDao.queryById(getDefaultGroupId(accountId))!!
             val parseResult =
-                OPMLDataSource.parseFileInputStream(inputStream, defaultGroup, context.currentAccountId)
+                OPMLDataSource.parseFileInputStream(inputStream, defaultGroup, accountId)
             var imported = 0
             var skipped = parseResult.duplicateCount
             parseResult.groupWithFeedList.forEach { groupWithFeed ->

@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.ash.reader.R
 import me.ash.reader.domain.service.migration.FeedBucketImporter
+import me.ash.reader.domain.service.migration.ImportLedger
 import me.ash.reader.ui.page.settings.migration.MigrationViewModel.RunResult
 
 /**
@@ -38,6 +39,8 @@ import me.ash.reader.ui.page.settings.migration.MigrationViewModel.RunResult
 @Composable
 fun ImportResultSheet(
     applying: Boolean,
+    applyingFeed: String?,
+    applyingLedger: ImportLedger?,
     result: RunResult?,
     onRetry: () -> Unit,
     onDone: () -> Unit,
@@ -62,6 +65,23 @@ fun ImportResultSheet(
                     // 4dp linear track + visible text; no spinner-only state.
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(12.dp))
+                    // UI-CONTRACT §6.10 Applying: current feed + the
+                    // imported/skipped/failed ledger so far (review round 1
+                    // finding 6).
+                    applyingFeed?.takeIf { it.isNotBlank() }?.let { feedTitle ->
+                        Text(
+                            text = stringResource(R.string.migration_current_feed, feedTitle),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    val ledger = applyingLedger
+                    if (ledger != null) {
+                        ResultRow(R.string.migration_ledger_imported, ledger.imported)
+                        ResultRow(R.string.migration_ledger_skipped, ledger.skipped)
+                        ResultRow(R.string.migration_ledger_failed, ledger.failed)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     Text(
                         text = stringResource(R.string.migration_resumable_hint),
                         style = MaterialTheme.typography.bodyMedium,
@@ -75,32 +95,7 @@ fun ImportResultSheet(
                         modifier = Modifier.semantics { heading() },
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    val ledger = result.ledger
-                    ResultRow(R.string.migration_ledger_imported, ledger.imported)
-                    ResultRow(R.string.migration_ledger_skipped, ledger.skipped)
-                    ResultRow(R.string.migration_ledger_failed, ledger.failed)
-                    if (ledger.searchesImported > 0 || ledger.rulesImported > 0) {
-                        ResultRow(
-                            R.string.migration_ledger_searches_rules,
-                            ledger.searchesImported + ledger.rulesImported,
-                        )
-                    }
-                    if (ledger.failures.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(R.string.migration_failures),
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.semantics { heading() },
-                        )
-                        ledger.failures.forEach { failure ->
-                            Text(
-                                text = failure,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.heightIn(min = 32.dp),
-                            )
-                        }
-                    }
+                    ResultLedger(result.ledger)
                     removalReport?.let { report ->
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
@@ -118,6 +113,54 @@ fun ImportResultSheet(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        TextButton(
+                            onClick = onRemoveImported,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text(stringResource(R.string.migration_remove_imported))
+                        }
+                        TextButton(
+                            onClick = onDone,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text(stringResource(R.string.migration_done))
+                        }
+                    }
+                }
+                result is RunResult.Partial -> {
+                    // Bounded chunk failures (S32a step 7): successful chunks
+                    // stay truthfully listed; Retry resumes the failed ones
+                    // against the retained source.
+                    Text(
+                        text = stringResource(R.string.migration_result_partial),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    ResultLedger(result.ledger)
+                    removalReport?.let { report ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.migration_removed_skipped,
+                                report.removed,
+                                report.skipped,
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = onRetry,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text(stringResource(R.string.migration_retry))
+                        }
                         TextButton(
                             onClick = onRemoveImported,
                             modifier = Modifier.heightIn(min = 48.dp),
@@ -173,6 +216,36 @@ fun ImportResultSheet(
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+/** Exact imported/skipped/failed counts + itemized row errors. */
+@Composable
+private fun ResultLedger(ledger: ImportLedger) {
+    ResultRow(R.string.migration_ledger_imported, ledger.imported)
+    ResultRow(R.string.migration_ledger_skipped, ledger.skipped)
+    ResultRow(R.string.migration_ledger_failed, ledger.failed)
+    if (ledger.searchesImported > 0 || ledger.rulesImported > 0) {
+        ResultRow(
+            R.string.migration_ledger_searches_rules,
+            ledger.searchesImported + ledger.rulesImported,
+        )
+    }
+    if (ledger.failures.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = stringResource(R.string.migration_failures),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.semantics { heading() },
+        )
+        ledger.failures.forEach { failure ->
+            Text(
+                text = failure,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.heightIn(min = 32.dp),
+            )
         }
     }
 }

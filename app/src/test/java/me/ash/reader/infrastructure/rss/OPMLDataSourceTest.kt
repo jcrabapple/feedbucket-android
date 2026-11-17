@@ -14,6 +14,7 @@ import me.ash.reader.domain.service.AccountService
 import me.ash.reader.domain.service.LocalRssService
 import me.ash.reader.domain.service.OpmlService
 import me.ash.reader.domain.service.RssService
+import me.ash.reader.ui.ext.getDefaultGroupId
 import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
@@ -21,6 +22,7 @@ import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.junit.MockitoJUnitRunner
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 
@@ -176,6 +178,57 @@ class OPMLDataSourceTest {
     }
 
     @Test
+    fun testSaveToDatabaseCountsImportedAndSkippedExistingFeeds() {
+        // S33 service level: in-document duplicate xmlUrl + already-
+        // subscribed feeds count as skipped; only new feeds are inserted.
+        val accountId = 1
+        val defaultGroup = Group(
+            id = accountId.getDefaultGroupId(), name = "Default", accountId = accountId,
+        )
+        val opml = fill("""
+            <outline type="rss" text="New Feed" xmlUrl="https://new.example/feed"/>
+            <outline type="rss" text="Existing" xmlUrl="https://existing.example/rss"/>
+            <outline type="rss" text="Dup" xmlUrl="https://new.example/feed"/>
+        """)
+        val groupDao = mock<GroupDao> {
+            onBlocking { queryById(any()) } doReturn defaultGroup
+        }
+        val inserted = mutableListOf<Feed>()
+        val feedDao = mock<FeedDao> {
+            onBlocking { insertList(any()) } doAnswer { invocation ->
+                val list = invocation.getArgument<List<Feed>>(0)
+                inserted.addAll(list)
+                list.map { 0L }
+            }
+        }
+        val accountService = mock<AccountService> {
+            on { getCurrentAccountId() } doReturn accountId
+        }
+        val localRssService = mock<LocalRssService> {
+            onBlocking { isFeedExist(any()) } doReturn false
+            onBlocking { isFeedExist("https://existing.example/rss") } doReturn true
+        }
+        val rssService = mock<RssService> {
+            on { get() } doReturn localRssService
+        }
+        val service = OpmlService(
+            groupDao = groupDao,
+            feedDao = feedDao,
+            accountService = accountService,
+            rssService = rssService,
+            OPMLDataSource = opmlDataSource,
+            ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+
+        val result = runBlocking { service.saveToDatabase(opml.byteInputStream(Charsets.UTF_8)) }
+
+        Assert.assertEquals(1, result.imported)
+        Assert.assertEquals(2, result.skipped)
+        Assert.assertEquals(1, inserted.size)
+        Assert.assertEquals("https://new.example/feed", inserted.single().url)
+    }
+
+    @Test
     fun testExportCategoryCsvAndSiteUrlRoundTrip() {
         // S33 export parity: category = feed.tags CSV; htmlUrl carries
         // siteUrl; both round-trip through the importer (htmlUrl ->
@@ -204,7 +257,6 @@ class OPMLDataSourceTest {
         val localRssService = mock<LocalRssService>()
         val rssService = mock<RssService>()
         val service = OpmlService(
-            context = mockContext,
             groupDao = groupDao,
             feedDao = mock(),
             accountService = accountService,

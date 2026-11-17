@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleIdentity
+import me.ash.reader.domain.model.download.DownloadHtmlSanitizer
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
 import me.ash.reader.domain.model.importing.ImportIdentity
@@ -116,6 +117,15 @@ class FeedBucketImporter internal constructor(
 
     sealed interface ApplyOutcome {
         data class Completed(val runId: Long, val ledger: ImportLedger) : ApplyOutcome
+
+        /**
+         * Bounded chunk failures: imported chunks stay, the failed ones are
+         * itemized, the run remains RUNNING (retryable) and the retained
+         * source is preserved while Retry exists (S32a steps 7/8;
+         * UI-CONTRACT §6.10, §11.3; review round 1 finding 3).
+         */
+        data class Partial(val runId: Long, val ledger: ImportLedger) : ApplyOutcome
+
         data class Rejected(val reason: String) : ApplyOutcome
         data class SourceLost(val runId: Long) : ApplyOutcome
 
@@ -194,6 +204,12 @@ class FeedBucketImporter internal constructor(
             if (invalid != null) {
                 return@withContext rejectRun(runId, invalid.reason)
             }
+            // Secret guard, value level: scan BEFORE the user confirms the
+            // preview so a token-bearing source dies here with zero writes.
+            val secretHits = SecretGuard.scanSourceValues(source)
+            if (secretHits.isNotEmpty()) {
+                return@withContext rejectRun(runId, REASON_SECRET_VALUE)
+            }
             val preview = ImportPreview.read(source, run.sourceFingerprint, kind)
             SecretGuard.assertQueriesSecretFree(source.queriesIssued)
             PreviewOutcome.Ready(runId, preview)
@@ -209,6 +225,7 @@ class FeedBucketImporter internal constructor(
         runId: Long,
         previewFingerprint: String,
         now: Long = System.currentTimeMillis(),
+        onProgress: ((feedTitle: String, ledger: ImportLedger) -> Unit)? = null,
     ): ApplyOutcome = withContext(ioDispatcher) {
         val run = importDao.queryRun(runId) ?: return@withContext ApplyOutcome.SourceLost(runId)
         val file = run.sourcePath?.let(::File)
@@ -240,6 +257,15 @@ class FeedBucketImporter internal constructor(
             val invalid = ImportSchemaChecker.validate(source)
             if (invalid != null) return@withContext ApplyOutcome.Rejected(invalid.reason)
 
+            // Secret guard, value level (S32a step 2): scan the SOURCE before
+            // ANY target write; on a hit nothing is written and the
+            // secret-bearing retained copy is purged.
+            val secretHits = SecretGuard.scanSourceValues(source)
+            if (secretHits.isNotEmpty()) {
+                return@withContext rejectRun(runId, REASON_SECRET_VALUE)
+                    .let { ApplyOutcome.Rejected(REASON_SECRET_VALUE) }
+            }
+
             val accountId = accountService.getCurrentAccountId()
             var ledger = ImportLedger()
             val seenSearches = mutableSetOf<String>()
@@ -263,6 +289,7 @@ class FeedBucketImporter internal constructor(
                     ) != null
                 ) {
                     ledger = ledger.plusSkipped()
+                    onProgress?.invoke(feedRow["title"].orEmpty(), ledger)
                     continue
                 }
                 ledger = try {
@@ -276,6 +303,7 @@ class FeedBucketImporter internal constructor(
                         "feed ${feedRow["id"]} (${feedRow["title"]}): ${e.message ?: e.javaClass.simpleName}",
                     )
                 }
+                onProgress?.invoke(feedRow["title"].orEmpty(), ledger)
             }
 
             // Saved searches + action rules (idempotent via identity map).
@@ -283,18 +311,37 @@ class FeedBucketImporter internal constructor(
             ledger = applyActionRules(source, runId, accountId, ledger, seenRules)
 
             SecretGuard.assertQueriesSecretFree(source.queriesIssued)
-            importDao.updateRunState(runId, ImportRun.STATE_COMPLETED, now, ledger.toJson())
-            ApplyOutcome.Completed(runId, ledger)
+            if (ledger.failed > 0) {
+                // Bounded failures: stay RUNNING + keep the retained source so
+                // Retry can resume the failed chunks (nothing is finalized
+                // Completed while failure items exist; review round 1
+                // findings 3/4).
+                importDao.updateRunState(runId, ImportRun.STATE_RUNNING, now, ledger.toJson())
+                ApplyOutcome.Partial(runId, ledger)
+            } else {
+                importDao.updateRunState(runId, ImportRun.STATE_COMPLETED, now, ledger.toJson())
+                ApplyOutcome.Completed(runId, ledger)
+            }
         }
     }
 
-    /** S32a step 6 — a 'running' run resumes against its retained copy. */
-    suspend fun resume(now: Long = System.currentTimeMillis()): ApplyOutcome? {
-        val run = importDao.queryRunningRun() ?: return null
-        return apply(run.id, run.sourceFingerprint, now)
+    /**
+     * S32a step 6 — resume the latest retryable run against its retained
+     * copy: state RUNNING, or FAILED with the retained copy still on disk
+     * (recovery after fingerprint mismatch / apply-time rejection; review
+     * round 1 finding 4). Uses the run's RECORDED fingerprint, which matches
+     * the retained bytes, so a resumed apply is self-consistent.
+     */
+    suspend fun resume(
+        now: Long = System.currentTimeMillis(),
+        onProgress: ((feedTitle: String, ledger: ImportLedger) -> Unit)? = null,
+    ): ApplyOutcome? {
+        val run = importDao.queryResumableRun() ?: return null
+        return apply(run.id, run.sourceFingerprint, now, onProgress)
     }
 
-    suspend fun runningRun(): ImportRun? = importDao.queryRunningRun()
+    /** Latest retryable run (resumable indicator; S32a steps 6/8). */
+    suspend fun resumableRun(): ImportRun? = importDao.queryResumableRun()
 
     suspend fun latestRun(): ImportRun? = importDao.queryLatestRun(ImportRun.KIND_FEEDBUCKET)
 
@@ -302,6 +349,15 @@ class FeedBucketImporter internal constructor(
     // Stage 7 — remove imported data (provenance-guarded)
     // ------------------------------------------------------------------
 
+    /**
+     * S32a step 7 — remove imported data, provenance-guarded. DETERMINISTIC
+     * TWO-PHASE (review round 1 finding 5): phase 1 collects article
+     * deletions (validating stateStamps) and deletes searches/rules; phase 2
+     * evaluates EVERY feed cascade guard against the COMPLETE article
+     * deletion set; phase 3 deletes the articles. Result-order independent:
+     * feed-first DAO order cannot strand a feed whose articles were already
+     * deleted or wrongly protect it before its own rows were considered.
+     */
     suspend fun removeImported(runId: Long): RemovalReport = withContext(ioDispatcher) {
         val created = importDao.queryCreatedIdentitiesByRun(runId)
         var removed = 0
@@ -309,8 +365,10 @@ class FeedBucketImporter internal constructor(
         var skippedProtected = 0
         // Article ids this removal will delete (for the feed cascade walk).
         val articlesToDelete = mutableSetOf<String>()
+        val feedIdentities = mutableListOf<ImportIdentity>()
 
         importDao.runInImportTransaction {
+            // Phase 1: non-feed rows + collect feed identities.
             for (identity in created) {
                 when (identity.targetKind) {
                     ImportIdentity.TARGET_ARTICLE -> {
@@ -339,26 +397,28 @@ class FeedBucketImporter internal constructor(
                             removed += 1
                         }
                     }
-                    ImportIdentity.TARGET_FEED -> {
-                        val current = feedDao.queryById(identity.targetId)
-                        if (current == null || feedStamp(current) != identity.stateStamp) {
-                            skippedEdited += 1
-                        } else {
-                            // Cascade guard: the feed may only go if no
-                            // retained article (pre-existing / other-run /
-                            // edited-since-import) would be FK-cascaded.
-                            val retained = articleDao.queryIdsByFeed(current.id) - articlesToDelete
-                            if (retained.isNotEmpty()) {
-                                skippedProtected += 1
-                            } else {
-                                feedDao.deleteById(current.id)
-                                removed += 1
-                            }
-                        }
+                    ImportIdentity.TARGET_FEED -> feedIdentities.add(identity)
+                }
+            }
+            // Phase 2: feed guards with the COMPLETE articlesToDelete set.
+            for (identity in feedIdentities) {
+                val current = feedDao.queryById(identity.targetId)
+                if (current == null || feedStamp(current) != identity.stateStamp) {
+                    skippedEdited += 1
+                } else {
+                    // Cascade guard: the feed may only go if no retained
+                    // article (pre-existing / other-run / edited-since-import)
+                    // would be FK-cascaded.
+                    val retained = articleDao.queryIdsByFeed(current.id) - articlesToDelete
+                    if (retained.isNotEmpty()) {
+                        skippedProtected += 1
+                    } else {
+                        feedDao.deleteById(current.id)
+                        removed += 1
                     }
                 }
             }
-            // Articles leave only after every feed guard was evaluated.
+            // Phase 3: articles leave only after every feed guard evaluated.
             for (articleId in articlesToDelete) {
                 articleDao.deleteById(articleId)
                 removed += 1
@@ -540,7 +600,12 @@ class FeedBucketImporter internal constructor(
     ): Article {
         val content = row.getValue("content").orEmpty()
         val original = row.getValue("original_content")
-        val raw = original ?: content.ifBlank { row.getValue("summary").orEmpty() }
+        val rawSource = original ?: content.ifBlank { row.getValue("summary").orEmpty() }
+        // S30a/D16 parity with downloaded content: source HTML is sanitized
+        // at WRITE time (the reader WebView enables JavaScript). script/style
+        // elements, event handlers and javascript:/data:/file: URIs never
+        // reach the target rows (review round 1 finding 2).
+        val raw = DownloadHtmlSanitizer.sanitize(rawSource)
         val extracted = row.getValue("extracted") == "1"
         val externalId = row.getValue("external_id").orEmpty()
         val published = parseDate(row.getValue("published"))
@@ -551,14 +616,18 @@ class FeedBucketImporter internal constructor(
             author = row.getValue("author")?.takeIf { it.isNotBlank() },
             rawDescription = raw,
             shortDescription = Jsoup.parse(raw).text().take(SHORT_DESCRIPTION_MAX),
-            fullContent = if (extracted) content.takeIf { it.isNotBlank() } else null,
+            fullContent = if (extracted) {
+                DownloadHtmlSanitizer.sanitize(content).takeIf { it.isNotBlank() }
+            } else {
+                null
+            },
             link = row.getValue("url").orEmpty(),
             feedId = feed.id,
             accountId = accountId,
             isUnread = row["is_unread"] != null,
             isStarred = row["is_starred"] != null,
             guid = externalId,
-            originalContent = original,
+            originalContent = original?.let { DownloadHtmlSanitizer.sanitize(it) },
             isUpdated = row["updated_at"] != null,
             contentChangedAt = parseDate(row["updated_at"]),
             readAt = parseDate(row["read_at"]),
@@ -759,6 +828,8 @@ class FeedBucketImporter internal constructor(
     companion object {
         const val IMPORTS_DIR = "imports"
         const val RETENTION_MILLIS = 7L * 24 * 60 * 60 * 1000
+        const val REASON_SECRET_VALUE =
+            "Secret-like token value detected in the source. Nothing was imported."
         private const val SHORT_DESCRIPTION_MAX = 280
     }
 }
