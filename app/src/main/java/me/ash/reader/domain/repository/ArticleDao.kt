@@ -23,7 +23,7 @@ interface ArticleDao {
 
     @Query(
         """
-        UPDATE article SET isStarred = :isStarred 
+        UPDATE article SET isStarred = :isStarred, stateVersion = stateVersion + 1
         WHERE accountId = :accountId
         AND id in (:ids)
         """
@@ -36,7 +36,7 @@ interface ArticleDao {
 
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread 
+        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
         WHERE accountId = :accountId
         AND id in (:ids)
         """
@@ -321,7 +321,7 @@ interface ArticleDao {
     @Transaction
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread 
+        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
         WHERE accountId = :accountId
         AND date < :before
         AND isUnread != :isUnread
@@ -336,7 +336,7 @@ interface ArticleDao {
     @Transaction
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread 
+        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
         WHERE feedId IN (
             SELECT id FROM feed 
             WHERE groupId = :groupId
@@ -356,7 +356,7 @@ interface ArticleDao {
     @Transaction
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread 
+        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
         WHERE feedId = :feedId
         AND accountId = :accountId
         AND isUnread != :isUnread
@@ -373,7 +373,7 @@ interface ArticleDao {
     @Transaction
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread 
+        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
         WHERE id = :articleId
         AND accountId = :accountId
         """
@@ -386,7 +386,7 @@ interface ArticleDao {
 
     @Query(
         """
-        UPDATE article SET isStarred = :isStarred 
+        UPDATE article SET isStarred = :isStarred, stateVersion = stateVersion + 1
         WHERE id = :articleId
         AND accountId = :accountId
         """
@@ -524,7 +524,10 @@ interface ArticleDao {
         """
         SELECT a.id, a.date, a.title, a.author, a.rawDescription, 
         a.shortDescription, a.fullContent, a.img, a.link, a.feedId, 
-        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt 
+        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt,
+        a.guid, a.originalContent, a.contentChangedAt, a.isUpdated, a.readAt,
+        a.extractedAt, a.publishedAt, a.stateVersion, a.titleLower, a.shortLower,
+        a.rawLower, a.fullLower
         FROM article AS a
         LEFT JOIN feed AS b ON b.id = a.feedId
         LEFT JOIN `group` AS c ON c.id = b.groupId
@@ -545,7 +548,10 @@ interface ArticleDao {
         """
         SELECT a.id, a.date, a.title, a.author, a.rawDescription, 
         a.shortDescription, a.fullContent, a.img, a.link, a.feedId, 
-        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt 
+        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt,
+        a.guid, a.originalContent, a.contentChangedAt, a.isUpdated, a.readAt,
+        a.extractedAt, a.publishedAt, a.stateVersion, a.titleLower, a.shortLower,
+        a.rawLower, a.fullLower
         FROM article AS a
         LEFT JOIN feed AS b ON b.id = a.feedId
         LEFT JOIN `group` AS c ON c.id = b.groupId
@@ -567,7 +573,10 @@ interface ArticleDao {
         """
         SELECT a.id, a.date, a.title, a.author, a.rawDescription, 
         a.shortDescription, a.fullContent, a.img, a.link, a.feedId, 
-        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt 
+        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt,
+        a.guid, a.originalContent, a.contentChangedAt, a.isUpdated, a.readAt,
+        a.extractedAt, a.publishedAt, a.stateVersion, a.titleLower, a.shortLower,
+        a.rawLower, a.fullLower
         FROM article AS a
         LEFT JOIN feed AS b ON b.id = a.feedId
         LEFT JOIN `group` AS c ON c.id = b.groupId
@@ -636,7 +645,10 @@ interface ArticleDao {
         """
         SELECT a.id, a.date, a.title, a.author, a.rawDescription, 
         a.shortDescription, a.fullContent, a.img, a.link, a.feedId, 
-        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt 
+        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt,
+        a.guid, a.originalContent, a.contentChangedAt, a.isUpdated, a.readAt,
+        a.extractedAt, a.publishedAt, a.stateVersion, a.titleLower, a.shortLower,
+        a.rawLower, a.fullLower
         FROM article AS a LEFT JOIN feed AS b 
         ON a.feedId = b.id
         WHERE a.feedId = :feedId 
@@ -916,5 +928,56 @@ interface ArticleDao {
         ).associateBy { it.link }
 
         return articles.filterNot { existingArticles.containsKey(it.link) }.also { insertList(it) }
+    }
+
+    @Query(
+        """
+        SELECT * FROM article
+        WHERE feedId = :feedId
+        AND accountId = :accountId
+        AND (
+            (guid != '' AND guid IN (:guids))
+            OR (link != '' AND link IN (:links))
+        )
+        """
+    )
+    suspend fun queryByFeedIdGuidsOrLinks(
+        feedId: String,
+        accountId: Int,
+        guids: List<String>,
+        links: List<String>,
+    ): List<Article>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertListIgnoreConflict(articles: List<Article>): List<Long>
+
+    /**
+     * S7 dedupe on ingest: an incoming article matches an existing row when
+     * feedId matches AND (guid non-empty AND equals existing guid) OR (link
+     * non-empty AND equals existing link). Matches take the update path in
+     * later waves (S20a); here they are skipped exactly like the upstream
+     * link-only path, keeping this wave's sync semantics byte-identical.
+     * INSERT uses IGNORE on the PK as the last-resort race guard for two
+     * workers computing the same deterministic S6 id.
+     */
+    @Transaction
+    suspend fun insertListIfNotExistByIdentity(articles: List<Article>, feed: Feed): List<Article> {
+        if (articles.isEmpty()) return articles
+
+        val existingArticles = queryByFeedIdGuidsOrLinks(
+            feedId = feed.id,
+            accountId = feed.accountId,
+            guids = articles.map { it.guid },
+            links = articles.map { it.link },
+        )
+
+        val fresh = articles.filterNot { incoming ->
+            existingArticles.any { existing ->
+                (incoming.guid.isNotEmpty() && existing.guid.isNotEmpty() && existing.guid == incoming.guid) ||
+                    (incoming.link.isNotEmpty() && existing.link.isNotEmpty() && existing.link == incoming.link)
+            }
+        }
+        insertListIgnoreConflict(fresh)
+        return fresh
     }
 }

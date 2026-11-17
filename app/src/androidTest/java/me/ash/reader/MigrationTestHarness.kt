@@ -4,6 +4,7 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import me.ash.reader.infrastructure.db.AndroidDatabase
+import me.ash.reader.infrastructure.db.MIGRATION_7_8
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -12,10 +13,15 @@ import org.junit.runner.RunWith
  * FeedBucket migration test harness (Wave A scaffold, plan task 9).
  *
  * Boots [MigrationTestHelper] against the exported Room schemas
- * (app/schemas -> androidTest assets). Wave B (S5) adds MIGRATION_7_8 and
- * turns [v7SchemaOpens] into the full v7 -> v8 Migration7To8Test: fixture
- * rows, exact schema/data/index assertions vs 8.json, FTS rebuild
- * round-trip, and behavioral trigger sync.
+ * (app/schemas -> androidTest assets). The full v7 -> v8 assertion suite
+ * lives in `me.ash.reader.db.Migration7To8Test` (S5.6); this scaffold now
+ * smoke-validates the 7 -> 8 path end to end.
+ *
+ * RED-phase note (amended, R4): before MIGRATION_7_8 existed, opening the
+ * v7 fixture at version 8 threw
+ * IllegalStateException("A migration from 7 to 8 was required but not
+ * found…") from RoomOpenHelper — a RUNTIME failure, not a compile failure
+ * (captured in the Wave B review packet).
  *
  * Runs on an explicitly selected emulator only (D15).
  */
@@ -31,14 +37,9 @@ class MigrationTestHarness {
         )
 
     @Test
-    fun v7SchemaOpens() {
-        // Create an empty v7 database from the exported 7.json schema.
+    fun v7MigratesToV8AndValidates() {
         helper.createDatabase(TEST_DB, 7).close()
-
-        // Open + validate at version 7 with the current entity definitions.
-        // Wave B replaces this with runMigrationsAndValidate(TEST_DB, 8, true)
-        // after registering MIGRATION_7_8.
-        helper.runMigrationsAndValidate(TEST_DB, 7, true)
+        helper.runMigrationsAndValidate(TEST_DB, 8, true, MIGRATION_7_8).close()
     }
 
     companion object {

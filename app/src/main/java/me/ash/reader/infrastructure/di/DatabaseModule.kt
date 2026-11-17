@@ -10,6 +10,12 @@ import me.ash.reader.domain.repository.AccountDao
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
+import me.ash.reader.domain.repository.ImportDao
+import me.ash.reader.domain.repository.PositionDao
+import me.ash.reader.domain.repository.SavedSearchDao
+import me.ash.reader.domain.repository.StateApplyDao
+import me.ash.reader.domain.repository.ActionRuleDao
+import me.ash.reader.domain.repository.DownloadDao
 import me.ash.reader.infrastructure.db.AndroidDatabase
 import javax.inject.Singleton
 
@@ -44,6 +50,36 @@ object DatabaseModule {
     @Singleton
     fun provideAccountDao(androidDatabase: AndroidDatabase): AccountDao =
         androidDatabase.accountDao()
+
+    @Provides
+    @Singleton
+    fun provideSavedSearchDao(androidDatabase: AndroidDatabase): SavedSearchDao =
+        androidDatabase.savedSearchDao()
+
+    @Provides
+    @Singleton
+    fun provideActionRuleDao(androidDatabase: AndroidDatabase): ActionRuleDao =
+        androidDatabase.actionRuleDao()
+
+    @Provides
+    @Singleton
+    fun provideDownloadDao(androidDatabase: AndroidDatabase): DownloadDao =
+        androidDatabase.downloadDao()
+
+    @Provides
+    @Singleton
+    fun providePositionDao(androidDatabase: AndroidDatabase): PositionDao =
+        androidDatabase.positionDao()
+
+    @Provides
+    @Singleton
+    fun provideImportDao(androidDatabase: AndroidDatabase): ImportDao =
+        androidDatabase.importDao()
+
+    @Provides
+    @Singleton
+    fun provideStateApplyDao(androidDatabase: AndroidDatabase): StateApplyDao =
+        androidDatabase.stateApplyDao()
 
     @Provides
     @Singleton
