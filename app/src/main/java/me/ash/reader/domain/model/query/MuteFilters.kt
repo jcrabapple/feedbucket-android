@@ -39,12 +39,19 @@ object MuteFilters {
         resolvedScope: (ActionRule) -> Set<String>,
     ): List<Clause> = mutes.mapNotNull { mute -> renderOne(mute, resolvedScope(mute)) }
 
-    /** One mute; null when web parity says skip (blank query/empty scope). */
+    /**
+     * One mute; null when web parity says skip (blank query/empty scope).
+     * A query that PARSES but renders no match clause (e.g. sort-only
+     * tokens like `sort:relevance`) is skipped too — otherwise the clause
+     * would be `NOT (feedId IN (…) AND )`, malformed SQL that crashes the
+     * unread/updated views at runtime.
+     */
     fun renderOne(mute: ActionRule, scope: Set<String>): Clause? {
         if (mute.type != ActionRule.TYPE_MUTE) return null
         if (mute.query.isBlank()) return null
         if (scope.isEmpty()) return null
         val match = SearchSql.renderWhere(SearchQuery.parse(mute.query))
+        if (match.sql.isBlank()) return null
         val placeholders = scope.joinToString(", ") { "?" }
         return Clause(
             sql = "NOT (feedId IN ($placeholders) AND ${match.sql})",

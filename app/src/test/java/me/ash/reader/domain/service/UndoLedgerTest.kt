@@ -111,20 +111,25 @@ class UndoLedgerTest {
                 writeEffect = { s ->
                     val row = articles.getValue(s.id)
                     // mirrors ArticleDao.applyRuleEffectsById: ONE version-
-                    // conditional write per touched article, bumping once
-                    // (states were read inside the same tx so the version
-                    // always matches here)
+                    // conditional write per touched article (0 rows when the
+                    // article moved since the states read), bumping once on
+                    // match (states are read inside the same tx so the
+                    // version normally matches here)
                     if (markRead || star) {
-                        if (markRead) {
-                            row.isUnread = false
-                            row.isUpdated = false
-                            row.readAt = now
+                        if (row.stateVersion != s.stateVersion) {
+                            0
+                        } else {
+                            if (markRead) {
+                                row.isUnread = false
+                                row.isUpdated = false
+                                row.readAt = now
+                            }
+                            if (star) {
+                                row.isStarred = true
+                            }
+                            row.stateVersion += 1
+                            1
                         }
-                        if (star) {
-                            row.isStarred = true
-                        }
-                        row.stateVersion += 1
-                        1
                     } else 0
                 },
                 prune = { dao.pruneToLastTenRuns() },
@@ -279,6 +284,39 @@ class UndoLedgerTest {
         // run 1 was pruned: undoLatest targets the newest remaining
         val counts = harness.undoLatest()
         assertNotNull(counts)
+    }
+
+    @Test
+    fun `effects-empty rule reports zero applied`() = runBlocking {
+        val store = articles("a1", "a2")
+        val harness = Harness(articles = store)
+
+        val count = harness.applyRun(
+            matched = listOf(harness.state("a1", true, false), harness.state("a2", true, false)),
+            markRead = false,
+            star = false,
+        )
+        assertEquals(0, count)
+        assertEquals(0, harness.dao.runs.getValue(1L).appliedCount)
+        // no effects: nothing may move
+        assertEquals(true, store.getValue("a1").isUnread)
+        assertEquals(0L, store.getValue("a1").stateVersion)
+    }
+
+    @Test
+    fun `stale-version effect write reports zero applied and touches nothing`() = runBlocking {
+        val store = articles("a1")
+        val harness = Harness(articles = store)
+        // states were read, then a concurrent change bumped the article
+        // BEFORE the effect write (the optimistic-lock mismatch path)
+        val stale = harness.state("a1", true, false)
+        store.getValue("a1").stateVersion = 7L
+
+        val count = harness.applyRun(listOf(stale), markRead = true, star = false)
+        assertEquals(0, count)
+        assertEquals(0, harness.dao.runs.getValue(1L).appliedCount)
+        assertEquals(true, store.getValue("a1").isUnread)
+        assertEquals(7L, store.getValue("a1").stateVersion)
     }
 
     companion object {

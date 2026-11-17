@@ -1039,10 +1039,13 @@ interface ArticleDao {
 
     /**
      * S18a apply-to-existing effect writer: ONE conditional UPDATE per
-     * touched article (expected POST-apply version = state.stateVersion + 1
-     * recorded in the ledger) so concurrent changes no-op instead of
-     * clobbering; the row bumps stateVersion exactly once. `mark_read`
-     * clears isUnread+isUpdated and sets readAt; `star` sets isStarred.
+     * touched article. [expectedVersion] MUST be the article's CURRENT
+     * (pre-write) stateVersion as read by the caller — the WHERE clause
+     * matches it and the SET bumps by one, so a concurrent change turns
+     * the write into a no-op (returns 0) instead of clobbering. On success
+     * the row lands exactly on the ledger's `stateVersionAtApply`
+     * (pre+1), which the undo restore then matches. `mark_read` clears
+     * isUnread+isUpdated and sets readAt; `star` sets isStarred.
      */
     @Query(
         """

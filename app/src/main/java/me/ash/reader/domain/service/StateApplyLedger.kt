@@ -133,6 +133,16 @@ constructor(
             }
         }
 
+    /**
+     * S18a effect write: ONE conditional UPDATE per touched article. The
+     * optimistic check is against the article's CURRENT version (the value
+     * read into [ArticleApplyState]) — the SQL matches
+     * `WHERE stateVersion = :expectedVersion` and then bumps, so passing
+     * the pre-apply version is what makes the write land exactly once and
+     * makes `stateVersionAtApply = state.stateVersion + 1` true for the
+     * undo restore's version check. Passing anything else (e.g. the
+     * post-apply version) matches zero rows and silently drops the effect.
+     */
     private suspend fun writeEffect(state: ArticleApplyState, markRead: Boolean, star: Boolean): Int {
         var changed = 0
         if (markRead || star) {
@@ -142,7 +152,7 @@ constructor(
                     markRead = markRead,
                     star = star,
                     readAt = Date(System.currentTimeMillis()),
-                    expectedVersion = state.stateVersion + 1,
+                    expectedVersion = state.stateVersion,
                 )
         }
         return changed

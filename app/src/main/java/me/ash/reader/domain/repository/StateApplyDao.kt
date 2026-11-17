@@ -62,10 +62,12 @@ interface StateApplyDao {
      * + before rows, applies the effects via [writeEffect], prunes
      * retention. [writeEffect] performs the per-article effect UPDATE(s)
      * (mark_read/star with the stateVersion bump) and MUST be conditional
-     * on the expected post-apply version — the DAO implementation passes
-     * `stateVersion = state.stateVersion + 1` so a concurrent change turns
-     * the write into a no-op rather than clobbering it. NO star budget on
-     * apply-to-existing (web parity). Returns the exact affected count.
+     * on the article's CURRENT version — a concurrent change turns the
+     * write into a no-op (returns 0) rather than clobbering it. NO star
+     * budget on apply-to-existing (web parity). `appliedCount`/the return
+     * value is the exact number of articles whose effects write landed
+     * (0 for an effects-empty rule); matched-but-not-written rows stay
+     * ledger-recorded so undo can still evaluate them.
      */
     @Transaction
     suspend fun applyRun(
@@ -80,21 +82,19 @@ interface StateApplyDao {
         prune: suspend () -> Unit,
     ): Int {
         if (matched.isEmpty()) return 0
+        val applied = if (markRead || star) matched.sumOf { writeEffect(it) } else 0
         val runId =
             insertRun(
                 StateApplyRun(
                     ruleId = ruleId,
                     startedAt = now,
                     finishedAt = now,
-                    appliedCount = matched.size,
+                    appliedCount = applied,
                 )
             )
         insertBeforeRows(StateApplyPlanner.beforeRows(runId, matched))
-        if (markRead || star) {
-            matched.forEach { writeEffect(it) }
-        }
         prune()
-        return matched.size
+        return applied
     }
 
     /**

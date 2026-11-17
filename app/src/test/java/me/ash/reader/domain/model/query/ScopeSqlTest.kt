@@ -3,6 +3,7 @@ package me.ash.reader.domain.model.query
 import me.ash.reader.domain.model.rule.ActionRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -83,6 +84,26 @@ class ScopeSqlTest {
         val emptyScope = ActionRule(type = ActionRule.TYPE_MUTE, title = "e", query = "tech", createdAt = 1L)
         val built = ScopeSql.rows(1, "unread", null, null, false, null, listOf(blank to setOf("f1"), emptyScope to emptySet()))
         assertFalse(built.sql.contains("NOT ("))
+    }
+
+    @Test
+    fun `sort-only mute query is skipped and cannot emit malformed SQL`() {
+        val sortOnly = ActionRule(type = ActionRule.TYPE_MUTE, title = "s", query = "sort:relevance", createdAt = 1L)
+        // direct renderer contract: no match clause -> no clause at all
+        assertNull(MuteFilters.renderOne(sortOnly, setOf("f1")))
+        // scope generation (rows + neighbor, unread + updated): no NOT
+        // clause, and no dangling `AND )` / `AND  ORDER BY` from an empty
+        // match contribution
+        val unread = ScopeSql.rows(1, "unread", null, null, false, null, listOf(sortOnly to setOf("f1")))
+        assertFalse(unread.sql.contains("NOT ("))
+        val updated = ScopeSql.rows(1, "updated", null, null, false, null, listOf(sortOnly to setOf("f1")))
+        assertFalse(updated.sql.contains("NOT ("))
+        val neighbor = ScopeSql.next(1, "unread", null, null, false, 100L, 7L, null, listOf(sortOnly to setOf("f1")))
+        assertFalse(neighbor.sql.contains("NOT ("))
+        for (built in listOf(unread, updated, neighbor)) {
+            assertFalse(built.sql.contains("AND )"))
+            assertFalse(Regex("AND\\s+ORDER BY").containsMatchIn(built.sql))
+        }
     }
 
     @Test
