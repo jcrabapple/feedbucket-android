@@ -1,6 +1,6 @@
 # FeedBucket Android — Build status (orchestrator STATUS)
 
-Maintained by orchestrator checkpoint cards (Gate A / Gate B / Checkpoint C / ...). Last verified: Gate B (t_122a1840), 2026-11-16.
+Maintained by orchestrator checkpoint cards (Gate A / Gate B / Checkpoint C / ...). Last verified: Checkpoint C (t_c66202a8), 2026-11-17.
 
 ## Verified foundation (Wave A / W4)
 
@@ -13,7 +13,20 @@ Maintained by orchestrator checkpoint cards (Gate A / Gate B / Checkpoint C / ..
 - Instrumented on emulator test_api36 (API 36): `AppLaunchSmokeTest.launchAndBackDoesNotCrash`, `ExampleInstrumentedTest.useAppContext`, `MigrationTestHarness.v7SchemaOpens` — 3/3 PASS.
 - S37 dependency posture RESOLVED: see SPEC S37 (amended by Gate B) and `build/recon/s37-dependency-posture.txt`. App compile classpath keeps `compose-bom-alpha 2025.10.01` -> material3 1.5.0-alpha07, adaptive* 1.3.0-alpha06, glance-material3 1.2.0-beta01; androidTest classpath uses the stable BOM -> material3 1.4.0. Stable-swap evidence: material3 1.4.0 stable lacks the Expressive API surface upstream uses (compile failure across 18 files); adaptive 1.3.0 stable AAR hard-requires SDK 37 / AGP 9.1.0. Authorized decision: retain tested bounded alpha pins; no downgrade; no unbounded alpha chasing; re-verify at Wave H.
 
+## Verified Wave B (schema v8, identity, FTS — data layer only)
+
+- Verified commit: `f526432ecb72d01a91354f1dde772e62afbb8d1c` (pushed to origin/feedbucket-native; tree clean).
+- Review path (t_83e9eaaf): coder run 10 handoff -> review; reviewer run 12 approved (done). No direct-complete by coder.
+- CI at exact head f526432e: FeedBucket CI run 44032352651 SUCCESS; inherited `Build Commit` run 44032352665 SUCCESS (Wave B's CI fix — `assembleGithubRelease` -> `assembleGithubDebug` — closed the S35a red workflow).
+- Unit: 50/50, 0 failures / 0 errors (10 classes), re-parsed from `app/build/test-results/**/*.xml` at HEAD.
+- Lint: fresh lint = 0 Errors vs committed baseline 28 Errors; `scripts/lint_delta.py` PASS.
+- Gate B re-run by Checkpoint C: `bash scripts/gate.sh B` PASS (unit 50/50, assembleGithubDebug green, lintGithubDebug green, lint delta PASS).
+- Diff scope 32d31139..f526432e: 44 files, +4074/-131 — exactly the Wave B owned-files list (schema 8.json committed; UUID.randomUUID gone from RssHelper.kt; no dependency/toml/build-file changes → S37/D17 posture unchanged).
+- Instrumented: DEFERRED (integration blocker) — 17 tests executed earlier on test_api36 (12 green pre-fix); post-fix re-run blocked by host emulator regression (qemu SwiftShader SIGSEGV on cold boot; `-gpu off` reaches adb-unauthorized then drops; host-GPU needs a physical desktop click — off-limits). Emulator-restore infra card t_d9844f3c dispatched; deferral must close before runtime-critical waves promote.
+
 ## Pending
 
-- Wave B (schema v8, identity, FTS — data layer only): card created by Gate B, idempotency key `feedbucket-android-v1-wave-b`.
-- Waves C–H strictly serial: Wave B reviewed + integrated before Wave C dispatches (enforced by the checkpoint card chain).
+- Wave C (reading reliability — read-state, positions, recently read, neighbors): card t_52fed684 (coder, idempotency `feedbucket-android-v1-wave-c`), created by Checkpoint C.
+- Checkpoint D (t_6fac9a17, default) gated on Wave C; carries the continuation responsibility.
+- Emulator-restore infra card t_d9844f3c (devops, host-only).
+- Waves D–H strictly serial: Wave C reviewed + integrated before Wave D dispatches (enforced by the checkpoint card chain).
