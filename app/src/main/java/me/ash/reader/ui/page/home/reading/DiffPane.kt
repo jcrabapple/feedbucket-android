@@ -33,8 +33,10 @@ internal const val DIFF_TAG_INSERTED = "me.ash.reader.diff.inserted"
  * so light/dark/dynamic surfaces stay AA by construction (D17 matrix).
  *
  * TalkBack: the Text announces [diffAccessibilityDescription] — the full
- * text with "deleted:"/"inserted:" prefixes on changed runs, so screen
- * readers hear every change in reading order (S22).
+ * readable text with "deleted:"/"inserted:" prefixes on changed runs and a
+ * deterministic [separator] between every changed run and its successor, so
+ * screen readers hear every change in reading order without fused runs
+ * (S22; review round 1 finding 4).
  */
 @Composable
 fun DiffPane(diff: ContentDiff, modifier: Modifier = Modifier) {
@@ -97,20 +99,36 @@ internal fun buildDiffAnnotatedString(
 
 /**
  * Pure TalkBack description (JVM-testable): every changed run is announced
- * with its [deletedPrefix]/[insertedPrefix] in reading order; equal runs
- * pass through verbatim so the announcement keeps full context.
+ * with its [deletedPrefix]/[insertedPrefix] in reading order, each followed
+ * by [separator] so consecutive runs never fuse ("deleted: betainserted:"
+ * is a defect, not a style choice); equal runs pass through verbatim so
+ * the announcement keeps full context.
  */
 internal fun diffAccessibilityDescription(
     diff: ContentDiff,
     deletedPrefix: String,
     insertedPrefix: String,
+    separator: String = " ",
 ): String =
     buildString {
         for (segment in diff.segments) {
             when (segment.kind) {
                 ContentDiffer.SegmentKind.EQUAL -> append(segment.text)
-                ContentDiffer.SegmentKind.DELETE -> append(deletedPrefix).append(segment.text)
-                ContentDiffer.SegmentKind.INSERT -> append(insertedPrefix).append(segment.text)
+                ContentDiffer.SegmentKind.DELETE ->
+                    appendChangedRun(deletedPrefix, segment.text, separator)
+                ContentDiffer.SegmentKind.INSERT ->
+                    appendChangedRun(insertedPrefix, segment.text, separator)
             }
         }
     }.trim()
+
+/**
+ * Deterministic separation in BOTH directions (review round 1 finding 4):
+ * a changed run never fuses with its predecessor ("onedeleted:") nor its
+ * successor ("betainserted:"). The trailing [separator] is trimmed when the
+ * run is the last thing in the announcement.
+ */
+private fun StringBuilder.appendChangedRun(prefix: String, text: String, separator: String) {
+    if (isNotEmpty() && !last().isWhitespace()) append(separator)
+    append(prefix).append(text).append(separator)
+}

@@ -192,15 +192,15 @@ class DiffTokenizerTest {
     fun equalLengthDifferentTextStillDiffs() {
         // S22 strict-improvement pin: web returns None on equal LENGTH;
         // Android compares token lists, so same-length-different-text
-        // MUST still produce a diff.
+        // MUST still produce a diff. Segment text is DISPLAY text: the
+        // closing block tag glued to the word token renders as a trailing
+        // space (see ContentDiffer.displayToken).
         val original = "<p>aaaaaaaaaaaaaaaaaaaaaaaa</p>"
         val current = "<p>bbbbbbbbbbbbbbbbbbbbbbbb</p>"
         val diff = ContentDiffer.diff(original, current)
         assertNotNull(diff)
-        // The web tokenizer glues adjacent tags into word tokens
-        // (`aaaa</p>`), so the closing tag rides along with the run.
-        assertEquals("aaaaaaaaaaaaaaaaaaaaaaaa</p>", diff!!.deletedText)
-        assertEquals("bbbbbbbbbbbbbbbbbbbbbbbb</p>", diff.insertedText)
+        assertEquals("aaaaaaaaaaaaaaaaaaaaaaaa ", diff!!.deletedText)
+        assertEquals("bbbbbbbbbbbbbbbbbbbbbbbb ", diff.insertedText)
     }
 
     @Test

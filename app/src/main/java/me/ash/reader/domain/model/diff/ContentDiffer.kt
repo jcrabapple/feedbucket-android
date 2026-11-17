@@ -6,6 +6,7 @@ import com.github.difflib.patch.Patch
 import java.util.regex.Pattern
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Comment
+import org.jsoup.nodes.Entities
 import org.jsoup.nodes.Node
 import org.jsoup.safety.Cleaner
 import org.jsoup.safety.Whitelist
@@ -120,6 +121,39 @@ object ContentDiffer {
         TOKEN_REGEX.findAll(html).map { it.value }.toList()
 
     /**
+     * Display text for one sanitized-HTML token (review round 1 finding 3):
+     * the pane must render DECODED article text, never markup. Tag fragments
+     * (`<...>`, including tags glued inside word tokens by the web
+     * tokenizer, e.g. `gamma</p>`) are removed — block-level tags leave a
+     * single space so adjacent paragraphs/words don't fuse; inline tags
+     * leave nothing. Entity refs in the remaining text are decoded
+     * (`&amp;` → `&`).
+     */
+    fun displayToken(token: String): String =
+        TAG_FRAGMENT_REGEX.replace(token) { match -> if (isBlockTag(match.value)) " " else "" }
+            .let { Entities.unescape(it) }
+
+    private val TAG_FRAGMENT_REGEX = Regex("<[^>]+>")
+
+    /** Block-level tags: removed fragments become a single space. */
+    private val BLOCK_TAGS =
+        setOf(
+            "address", "article", "aside", "blockquote", "br", "caption", "dd", "details",
+            "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+            "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "nav",
+            "ol", "p", "pre", "section", "summary", "table", "tbody", "td", "tfoot",
+            "th", "thead", "tr", "ul",
+        )
+
+    private fun isBlockTag(tagToken: String): Boolean {
+        val name =
+            tagToken.removePrefix("<").removeSuffix(">")
+                .trimStart('/').takeWhile { it.isLetterOrDigit() }
+                .lowercase()
+        return name in BLOCK_TAGS
+    }
+
+    /**
      * S22 contract: null when [original] is null/blank, when the sanitized
      * token sequences are EQUAL (web returns None on equal length; Android
      * requires equal tokens — the strict improvement), or when computation
@@ -141,6 +175,9 @@ object ContentDiffer {
             ?.takeIf { it.hasChanges }
     }
 
+    /** Join a token range into its readable display text (see [displayToken]). */
+    private fun List<String>.toDisplayText(): String = joinToString("") { displayToken(it) }
+
     private fun buildSegments(originalTokens: List<String>, patch: Patch<String>): ContentDiff {
         val segments = mutableListOf<Segment>()
         var cursor = 0
@@ -148,21 +185,21 @@ object ContentDiffer {
             val source = delta.source
             val target = delta.target
             if (source.position > cursor) {
-                segments += Segment(SegmentKind.EQUAL, originalTokens.subList(cursor, source.position).joinToString(""))
+                segments += Segment(SegmentKind.EQUAL, originalTokens.subList(cursor, source.position).toDisplayText())
             }
             when (delta.type) {
                 DeltaType.CHANGE -> {
-                    segments += Segment(SegmentKind.DELETE, source.lines.joinToString(""))
-                    segments += Segment(SegmentKind.INSERT, target.lines.joinToString(""))
+                    segments += Segment(SegmentKind.DELETE, source.lines.toDisplayText())
+                    segments += Segment(SegmentKind.INSERT, target.lines.toDisplayText())
                 }
-                DeltaType.DELETE -> segments += Segment(SegmentKind.DELETE, source.lines.joinToString(""))
-                DeltaType.INSERT -> segments += Segment(SegmentKind.INSERT, target.lines.joinToString(""))
-                DeltaType.EQUAL -> segments += Segment(SegmentKind.EQUAL, source.lines.joinToString(""))
+                DeltaType.DELETE -> segments += Segment(SegmentKind.DELETE, source.lines.toDisplayText())
+                DeltaType.INSERT -> segments += Segment(SegmentKind.INSERT, target.lines.toDisplayText())
+                DeltaType.EQUAL -> segments += Segment(SegmentKind.EQUAL, source.lines.toDisplayText())
             }
             cursor = source.position + source.lines.size
         }
         if (cursor < originalTokens.size) {
-            segments += Segment(SegmentKind.EQUAL, originalTokens.subList(cursor, originalTokens.size).joinToString(""))
+            segments += Segment(SegmentKind.EQUAL, originalTokens.subList(cursor, originalTokens.size).toDisplayText())
         }
         return ContentDiff(segments)
     }

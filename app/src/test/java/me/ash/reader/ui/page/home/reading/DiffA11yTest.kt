@@ -4,6 +4,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextDecoration
 import me.ash.reader.domain.model.diff.ContentDiffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -98,22 +99,66 @@ class DiffA11yTest {
                 deletedPrefix = "deleted: ",
                 insertedPrefix = "inserted: ",
             )
-        val delAt = description.indexOf("deleted: beta")
-        val insAt = description.indexOf("inserted: delta")
-        assertTrue("deleted run announced", delAt >= 0)
-        assertTrue("inserted run announced", insAt >= 0)
-        assertTrue("deleted announced before inserted", delAt < insAt)
-        // Equal context survives around the runs.
-        assertTrue(description.startsWith("<p>alpha "))
-        assertTrue(description.endsWith(" gamma</p>"))
+        // EXACT string (review round 1 finding 4): every changed run is
+        // separated from predecessor AND successor by deterministic
+        // separators — "deleted: betainserted: delta" or "onedeleted:"
+        // fusion is a failure. The double space before the tail equal run
+        // is the post-run separator plus the equal run's own leading space.
+        assertEquals("alpha deleted: beta inserted: delta  gamma", description)
+    }
+
+    @Test
+    fun talkBackDescriptionDeletionOnlyIsExact() {
+        // Pure deletion: no INSERT run exists (probe-verified segment list:
+        // EQUAL ' alpha ' / DELETE 'beta ' / EQUAL 'gamma ').
+        val diff = ContentDiffer.diff("<p>alpha beta gamma</p>", "<p>alpha gamma</p>")!!
+        assertEquals(
+            "alpha deleted: beta  gamma",
+            diffAccessibilityDescription(diff, "deleted: ", "inserted: "),
+        )
+    }
+
+    @Test
+    fun talkBackDescriptionInsertionOnlyIsExact() {
+        val diff = ContentDiffer.diff("<p>alpha gamma</p>", "<p>alpha beta gamma</p>")!!
+        assertEquals(
+            "alpha inserted: beta  gamma",
+            diffAccessibilityDescription(diff, "deleted: ", "inserted: "),
+        )
     }
 
     @Test
     fun whitespaceOnlyChangesAnnounceToo() {
         val diff =
             ContentDiffer.diff("<p>one  two</p>", "<p>one two</p>")!!
-        val description =
-            diffAccessibilityDescription(diff, "deleted: ", "inserted: ")
-        assertTrue(description.contains("deleted:") || description.contains("inserted:"))
+        assertEquals(
+            "one deleted:    inserted:   two",
+            diffAccessibilityDescription(diff, "deleted: ", "inserted: "),
+        )
+    }
+
+    @Test
+    fun renderedTextAndAnnouncementCarryNoMarkupOrEntityLiterals() {
+        // Review round 1 finding 3: the pane must render DECODED article
+        // text — no tags, no entity literals — while keeping exact spans.
+        val diff =
+            ContentDiffer.diff(
+                "<p>alpha beta &amp; gamma</p>",
+                "<p>alpha delta &amp; gamma</p>",
+            )!!
+        val annotated = buildDiffAnnotatedString(diff, deletedStyle, insertedStyle)
+        val description = diffAccessibilityDescription(diff, "deleted: ", "inserted: ")
+
+        for (text in listOf(annotated.text, description)) {
+            assertFalse("markup leaked into readable text: $text", text.contains('<'))
+            assertFalse("markup leaked into readable text: $text", text.contains('>'))
+            assertFalse("entity literal leaked: $text", text.contains("&amp;"))
+        }
+        // Entity decoded for display.
+        assertTrue(annotated.text.contains("&"))
+        assertEquals("alpha deleted: beta inserted: delta  & gamma", description)
+        // Spans still exact on the readable text.
+        val del = annotated.getStringAnnotations(DIFF_TAG_DELETED, 0, annotated.length).single()
+        assertEquals("beta", annotated.text.substring(del.start, del.end))
     }
 }
