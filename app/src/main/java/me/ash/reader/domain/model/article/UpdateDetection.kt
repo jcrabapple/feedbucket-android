@@ -1,6 +1,11 @@
 package me.ash.reader.domain.model.article
 
 import java.util.Date
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Comment
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
 
 /**
  * S20a (amended, R7) — refresh update-detection decision logic, the pure
@@ -160,6 +165,44 @@ object UpdateDetection {
         )
     }
 
-    /** Plain-text mirror of web `plain_text` (nh3 tag-strip, security.py:168). */
-    fun plainTextLength(html: String): Int = org.jsoup.Jsoup.parse(html).text().length
+    /**
+     * Plain-text mirror of web `plain_text` (security.py:168,
+     * `nh3.clean(value, tags=set()).strip()`), pinned against recorded
+     * Python ground truth (`UpdateDetectionTest.plainTextMatchesRecordedNh3Fixtures`,
+     * raw JSON in build/recon/e4-plaintext-fixtures.json):
+     *
+     *  - tags are REMOVED with their text kept (verbatim — no whitespace
+     *    collapsing, NO separator inserted between adjacent blocks), except
+     *    script/style whose content ammonia always drops, and comments.
+     *  - text is re-escaped as an HTML fragment: `&amp;`/`&lt;`/`&gt;`/
+     *    `&nbsp;` stay literal entity refs while `&quot;`/`&#39;` decode to
+     *    quotes — exactly Jsoup's base-mode text-node serialization.
+     *  - ends are Python `str.strip()` (Unicode whitespace, incl. NBSP and
+     *    U+001C–U+001F), not Java's narrower trim.
+     */
+    fun plainText(html: String): String {
+        val doc = Jsoup.parse(html)
+        doc.outputSettings().prettyPrint(false)
+        // ammonia removes script/style WITH their content even when no tags
+        // are allowed at all.
+        doc.select("script,style").remove()
+        val out = StringBuilder()
+        fun walk(node: Node) {
+            when (node) {
+                is TextNode -> out.append(node.outerHtml())
+                is Comment -> Unit
+                is Element -> node.childNodes().forEach(::walk)
+                else -> Unit
+            }
+        }
+        walk(doc.body() ?: doc)
+        return pythonStrip(out.toString())
+    }
+
+    /** Plain-text length mirror of web `plain_text` (nh3 tag-strip). */
+    fun plainTextLength(html: String): Int = plainText(html).length
+
+    /** Python `str.strip()`: Unicode whitespace, not just <= U+0020. */
+    private fun pythonStrip(value: String): String =
+        value.trim { it <= ' ' || Character.isSpaceChar(it) }
 }

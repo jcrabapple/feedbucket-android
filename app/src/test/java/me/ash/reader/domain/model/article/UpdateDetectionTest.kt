@@ -338,6 +338,58 @@ class UpdateDetectionTest {
         assertEquals(50, UpdateDetection.SIGNIFICANCE_THRESHOLD)
     }
 
+    // ---- plain_text web parity (security.py:168, review round 1 finding 1) ----
+
+    @Test
+    fun plainTextMatchesRecordedNh3Fixtures() {
+        // RECORDED PYTHON GROUND TRUTH (D14, raw JSON in
+        // build/recon/e4-plaintext-fixtures.json): web plain_text is
+        // `nh3.clean(value, tags=set()).strip()` — tags removed WITH their
+        // text kept (except script/style, whose content ammonia always
+        // drops), comments stripped, markup-significant entities RE-ESCAPED
+        // (`&amp;` stays a literal 5 chars; `&quot;`/`&#39;` decode to
+        // quotes), whitespace preserved VERBATIM (no collapsing), adjacent
+        // blocks concatenated with NO separator, Python str.strip() ends.
+        val fixtures: List<Pair<String, String>> = listOf(
+            "<p>fish &amp; chips &lt;tag&gt; caf&eacute;</p>" to "fish &amp; chips &lt;tag&gt; café",
+            "<p>foo</p><p>bar</p>" to "foobar",
+            "<div>one</div><div>two</div>" to "onetwo",
+            "<p>a  b\t\nc</p>" to "a  b\t\nc",
+            "a \n\n b" to "a \n\n b",
+            "<p>x</p><script>var a=1;</script><style>b{}</style><p>y</p>" to "xy",
+            "<p>a<!-- hidden -->b</p>" to "ab",
+            "<p>foo <b>bar</b> baz</p>" to "foo bar baz",
+            "<p>a<br>b</p><hr><p>c</p>" to "abc",
+            "a &amp; b" to "a &amp; b",
+            "<p>1 &lt; 2 &gt; 0</p>" to "1 &lt; 2 &gt; 0",
+            "<p>a&nbsp;b&nbsp;c</p>" to "a&nbsp;b&nbsp;c",
+            "<p>&quot;d&quot; &#39;e&#39;</p>" to "\"d\" 'e'",
+        )
+        for ((input, expected) in fixtures) {
+            assertEquals("plainText(${input.take(48)})", expected, UpdateDetection.plainText(input))
+        }
+    }
+
+    @Test
+    fun significanceUsesWebPlainTextAcrossAdjacentBlocks() {
+        // Review round 1 boundary witness, the exact 51-vs-50 destination
+        // assertion: old `<p>`+200 o+`</p>` vs new `<p>`+130 o+18 n+`</p><p>x</p>`.
+        // Web plain_text lengths: 200 vs 149 → delta 51 → SIGNIFICANT.
+        // The defective Jsoup .text() mirror gave 200 vs 150 → delta 50 →
+        // snapshot silently skipped. S20a requires the snapshot here.
+        val adjacentBlocks = "<p>${"o".repeat(130)}${"n".repeat(18)}</p><p>x</p>"
+        assertEquals(200, UpdateDetection.plainText(oldBody).length)
+        assertEquals(149, UpdateDetection.plainText(adjacentBlocks).length)
+        assertTrue(
+            "web parity: delta 51 > 50 must be significant",
+            UpdateDetection.isSignificant(oldBody, adjacentBlocks),
+        )
+        assertTrue(
+            "S20a snapshot must be written at the web parity boundary",
+            plan(gateDecision(newRaw = adjacentBlocks)).snapshotWrite,
+        )
+    }
+
     companion object {
         private const val DAY = 24 * 60 * 60 * 1000L
     }
