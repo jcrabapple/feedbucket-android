@@ -74,6 +74,8 @@ fun ReaderImageViewer(
 
             val zoomableState = rememberZoomableState(zoomSpec = ZoomSpec(maxZoomFactor = 4f))
 
+            val permissionDeniedText = stringResource(R.string.permission_denied)
+
             val painter =
                 rememberAsyncImagePainter(
                     ImageRequest.Builder(LocalContext.current)
@@ -112,7 +114,7 @@ fun ReaderImageViewer(
                         if (result) {
                             onDownloadImage(imageData.imageUrl)
                         } else {
-                            context.showToast(context.getString(R.string.permission_denied))
+                            context.showToast(permissionDeniedText)
                         }
                     },
                 )

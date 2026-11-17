@@ -52,6 +52,7 @@ fun AddFeverAccountDialog(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val uiState = viewModel.additionUiState.collectAsStateValue()
+    val feverName = stringResource(R.string.fever)
     val accountUiState = accountViewModel.accountUiState.collectAsStateValue()
 
     var feverServerUrl by rememberSaveable { mutableStateOf("") }
@@ -144,7 +145,7 @@ fun AddFeverAccountDialog(
                     accountViewModel.addAccount(
                         Account(
                             type = AccountType.Fever,
-                            name = context.getString(R.string.fever),
+                            name = feverName,
                             securityKey =
                                 FeverSecurityKey(
                                         serverUrl = feverServerUrl,

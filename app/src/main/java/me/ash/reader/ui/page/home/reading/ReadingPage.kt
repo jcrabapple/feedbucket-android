@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
@@ -78,6 +79,7 @@ fun ReadingPage(
 
     var isReaderScrollingDown by remember { mutableStateOf(false) }
     var showFullScreenImageViewer by remember { mutableStateOf(false) }
+    val imageSavedToast = stringResource(R.string.image_saved)
 
     var currentImageData by remember { mutableStateOf(ImageData()) }
 
@@ -345,7 +347,7 @@ fun ReadingPage(
             onDownloadImage = {
                 viewModel.downloadImage(
                     it,
-                    onSuccess = { context.showToast(context.getString(R.string.image_saved)) },
+                    onSuccess = { context.showToast(imageSavedToast) },
                     onFailure = {
                         // FIXME: crash the app for error report
                         th ->

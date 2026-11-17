@@ -53,6 +53,7 @@ fun AddGoogleReaderAccountDialog(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val uiState = viewModel.additionUiState.collectAsStateValue()
+    val googleReaderName = stringResource(R.string.google_reader)
     val accountUiState = accountViewModel.accountUiState.collectAsStateValue()
 
     var googleReaderServerUrl by rememberSaveable { mutableStateOf("") }
@@ -148,7 +149,7 @@ fun AddGoogleReaderAccountDialog(
                     accountViewModel.addAccount(
                         Account(
                             type = AccountType.GoogleReader,
-                            name = context.getString(R.string.google_reader),
+                            name = googleReaderName,
                             securityKey =
                                 GoogleReaderSecurityKey(
                                         serverUrl = googleReaderServerUrl,

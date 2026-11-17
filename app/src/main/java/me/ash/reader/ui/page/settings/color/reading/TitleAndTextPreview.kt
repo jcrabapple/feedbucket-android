@@ -33,17 +33,18 @@ fun TitleAndTextPreview() {
     val subheadUpperCase = LocalReadingSubheadUpperCase.current
     val titleAlign = LocalReadingTitleAlign.current
     val subtitleAlign = LocalReadingSubheadAlign.current
+    val titleText = stringResource(R.string.title)
+    val subheadText = stringResource(R.string.subhead)
 
-
-    val titleUpperCaseString by remember {
+    val titleUpperCaseString by remember(titleText) {
         derivedStateOf {
-            context.getString(R.string.title).uppercase()
+            titleText.uppercase()
         }
     }
 
-    val subheadUpperCaseString by remember {
+    val subheadUpperCaseString by remember(subheadText) {
         derivedStateOf {
-            context.getString(R.string.subhead).uppercase()
+            subheadText.uppercase()
         }
     }
     Column(modifier = Modifier.padding(24.dp)) {

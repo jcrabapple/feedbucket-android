@@ -59,6 +59,7 @@ fun AddFreshRSSAccountDialog(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val uiState = viewModel.additionUiState.collectAsStateValue()
+    val freshRssName = stringResource(R.string.fresh_rss)
     val accountUiState = accountViewModel.accountUiState.collectAsStateValue()
     val scope = rememberCoroutineScope()
 
@@ -159,7 +160,7 @@ fun AddFreshRSSAccountDialog(
                     accountViewModel.addAccount(
                         Account(
                             type = AccountType.FreshRSS,
-                            name = context.getString(R.string.fresh_rss),
+                            name = freshRssName,
                             securityKey = FreshRSSSecurityKey(
                                 serverUrl = freshRSSServerUrl,
                                 username = freshRSSUsername,

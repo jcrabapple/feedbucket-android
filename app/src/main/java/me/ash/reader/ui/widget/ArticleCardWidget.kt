@@ -110,18 +110,18 @@ class ArticleCardWidget() : GlanceAppWidget() {
             val (_, dataSource) = configFlow.collectAsStateValue(initialConfig)
 
             val articleFlow =
-                remember(dataSource) { repository.getData(dataSource) }
-                    .map {
+                remember(dataSource) {
+                    repository.getData(dataSource).map {
                         it.articles.let {
                             it.firstOrNull { !it.imgUrl.isNullOrEmpty() } ?: it.firstOrNull()
                         }
                     }
+                }
 
             val article = articleFlow.collectAsStateValue(initialArticle)
 
             val bitmap =
-                articleFlow
-                    .map { repository.fetchBitmap(it?.imgUrl) }
+                remember(articleFlow) { articleFlow.map { repository.fetchBitmap(it?.imgUrl) } }
                     .collectAsStateValue(initialBitmap)
 
             GlanceTheme { ArticleCard(article = article, dataSource = dataSource, bitmap = bitmap) }

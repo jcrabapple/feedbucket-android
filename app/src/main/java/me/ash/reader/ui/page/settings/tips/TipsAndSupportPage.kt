@@ -99,6 +99,11 @@ fun TipsAndSupportPage(
     val context = LocalContext.current
     val view = LocalView.current
     val scope = rememberCoroutineScope()
+    val checkingUpdatesToast = stringResource(R.string.checking_updates)
+    val isLatestVersionToast = stringResource(R.string.is_latest_version)
+    val githubLink = stringResource(R.string.github_link)
+    val telegramLink = stringResource(R.string.telegram_link)
+    val wikiLink = stringResource(R.string.wiki_link)
     var currentVersion by remember { mutableStateOf("") }
     var showSponsorDialog by remember { mutableStateOf(false) }
 
@@ -178,7 +183,7 @@ fun TipsAndSupportPage(
                                 onTap = {
                                     updateViewModel.checkUpdate(
                                         {
-                                            context.showToast(context.getString(R.string.checking_updates))
+                                            context.showToast(checkingUpdatesToast)
                                             context.dataStore.put(
                                                 DataStoreKey.skipVersionNumber,
                                                 ""
@@ -186,9 +191,7 @@ fun TipsAndSupportPage(
                                         },
                                         {
                                             if (!it) {
-                                                context.showToast(
-                                                    context.getString(R.string.is_latest_version)
-                                                )
+                                                context.showToast(isLatestVersionToast)
                                             }
                                         }
                                     )
@@ -265,7 +268,7 @@ fun TipsAndSupportPage(
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 view.playSoundEffect(SoundEffectConstants.CLICK)
                                 context.openURL(
-                                    context.getString(R.string.github_link),
+                                    githubLink,
                                     OpenLinkPreference.AutoPreferCustomTabs
                                 )
                             })
@@ -279,7 +282,7 @@ fun TipsAndSupportPage(
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 view.playSoundEffect(SoundEffectConstants.CLICK)
                                 context.openURL(
-                                    context.getString(R.string.telegram_link),
+                                    telegramLink,
                                     OpenLinkPreference.AutoPreferCustomTabs
                                 )
                             })
@@ -293,7 +296,7 @@ fun TipsAndSupportPage(
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 view.playSoundEffect(SoundEffectConstants.CLICK)
                                 context.openURL(
-                                    context.getString(R.string.wiki_link),
+                                    wikiLink,
                                     OpenLinkPreference.AutoPreferCustomTabs
                                 )
                             })
