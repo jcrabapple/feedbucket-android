@@ -1,6 +1,6 @@
 # FeedBucket Android — Build status (orchestrator STATUS)
 
-Maintained by orchestrator checkpoint cards (Gate A / Gate B / Checkpoint C / ...). Last verified: Checkpoint C (t_c66202a8), 2026-11-17.
+Maintained by orchestrator checkpoint cards (Gate A / Gate B / Checkpoint C / ...). Last verified: Checkpoint E (t_c0d13407), 2026-11-17.
 
 ## Verified foundation (Wave A / W4)
 
@@ -38,8 +38,22 @@ Maintained by orchestrator checkpoint cards (Gate A / Gate B / Checkpoint C / ..
 - REDCHECK: 4 triples recorded in Wave C handoff (scope-key injectivity, neighbor sort fallback, sticky generation half 1, mark-read-on-open policy), each with mutation -> red lines -> green lines.
 - Local emulator infra t_d9844f3c / t_90b494be: superseded by hosted-CI emulator gate (t_e8fae1d9); not a remaining blocker.
 
+## Verified Wave D (query, rules, saved searches, mutes — D7)
+
+- Verified commit: `fe9c9a9231f3ab6d6aec3db3edb985c5502c7a81` (pushed to origin/feedbucket-native; tree clean, no artificial merge).
+- Review path (t_9c290a7e): coder run 29 handoff -> review -> reviewer run 30 CHANGES-REQUIRED -> coder run 31 fix round 2 -> reviewer run 32 approved (done). No direct-complete by coder.
+- Unit: 125/125, 0 failures/errors/skips (20 classes), re-parsed from `app/build/test-results/**/*.xml` at HEAD (fresh forced `--rerun-tasks` run by reviewer 15:48Z; checkpoint re-parsed same XML + independent Gate D re-run PASS).
+- Lint: fresh lint = 0 Errors vs committed baseline 28 Errors; `scripts/lint_delta.py` PASS.
+- Gate D re-run by Checkpoint E: `bash scripts/gate.sh D` PASS (exit 0; 125/125 unit, assembleGithubDebug green, lintGithubDebug green, lint delta PASS).
+- LIKE audit (Gate D): `grep -c "LIKE"` = 6 in ArticleDao.kt; four text predicates `'%' || :text` all carry `ESCAPE '\'` with SearchSql.likeTerm-prep params; one tag-CSV containment uses exact-match framing; zero unescaped remnants (legacy searchArticle* variants deleted).
+- REDCHECK: 9 triples recorded (6 initial in run 29: star budget 100, R1 mute-no-ingest-effect, S15 view matrix, S18a stateVersionAtApply, retention prune 10, verbatim saved-search persistence; 3 fix-round in run 31: S18a optimistic-lock version, silent empty-match SQL, appliedCount), each with mutation -> red output line -> green output line.
+- Diff scope 6f3c3fc7..fe9c9a92: 36 files, +3516/-467 — Wave D owned files plus justified repoints/ripples (PositionPersistenceTest repointed to the raw ScopeSql path; FEVER/GoogleReaderRssService constructor ripple; strings.xml UI labels; no dependency/toml/build-file/CI changes -> S37/D17 posture unchanged).
+- Instrumented (hosted GitHub CI, exact head fe9c9a92, run 44119741751): independently downloaded artifacts and parsed — API35 32/32 and API36 32/32 across 7 classes, 0 failures/errors/skips on both. New StateApplyLedgerPersistenceTest executed 2/2 on both API levels (hosted deferral from Wave D review CLOSED). PositionPersistenceTest 13/13, ArticleDaoSearchTest 9/9, Migration7To8Test 5/5, smoke/harness 3/3.
+- CI at exact head fe9c9a92: Build Commit 44119741746 success, FeedBucket CI (gate) 44119741936 success, FeedBucket Instrumented 44119741751 success (api35 + api36 jobs).
+- Local emulator infra t_90b494be remains BLOCKED (paused, not resolved; host emulator gfxstream crash + device-consent hook) — superseded by the hosted-CI emulator gate (t_e8fae1d9/t_cfc2686e); not a remaining blocker.
+
 ## Pending
 
-- Wave D (query, rules, saved searches, mutes — D7): card t_9c290a7e (coder, idempotency `feedbucket-android-v1-wave-d`), created by Checkpoint D; carries reviewer advisory (destination-specific state/render smoke with failure witness), D17 verbatim, memory guard, no-phone/no-live-web.
-- Checkpoint E (t_c0d13407, default) gated on Wave D; carries the continuation responsibility.
-- Waves E–H strictly serial: Wave D reviewed + integrated before Wave E dispatches (enforced by the checkpoint card chain).
+- Wave E (updates & diffs — D8): card t_0dad71fa (coder, idempotency `feedbucket-android-v1-wave-e`), created by Checkpoint E; carries reviewer advisory (destination-specific state/render smoke with failure witness), D17 verbatim, memory guard, no-phone/no-live-web.
+- Checkpoint F (t_67ff9f5e, default) gated on Wave E; carries the continuation responsibility.
+- Waves F–H strictly serial: Wave E reviewed + integrated before Wave F dispatches (enforced by the checkpoint card chain).
