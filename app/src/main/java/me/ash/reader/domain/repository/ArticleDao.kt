@@ -903,19 +903,44 @@ interface ArticleDao {
     fun queryLatestUnreadArticleFlow(accountId: Int, limit: Int): Flow<List<ArticleWithFeed>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(vararg article: Article)
+    suspend fun insertInternal(vararg article: Article)
+
+    /** S11a: source-text writers refresh the shadow columns in the same write. */
+    @Transaction
+    suspend fun insert(vararg article: Article) {
+        article.forEach { it.refreshShadows() }
+        insertInternal(*article)
+    }
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertOnConflictIgnore(vararg article: Article)
+    suspend fun insertOnConflictIgnoreInternal(vararg article: Article)
+
+    @Transaction
+    suspend fun insertOnConflictIgnore(vararg article: Article) {
+        article.forEach { it.refreshShadows() }
+        insertOnConflictIgnoreInternal(*article)
+    }
 
     @Insert
-    suspend fun insertList(articles: List<Article>)
+    suspend fun insertListInternal(articles: List<Article>)
+
+    @Transaction
+    suspend fun insertList(articles: List<Article>) {
+        articles.forEach { it.refreshShadows() }
+        insertListInternal(articles)
+    }
 
     @Delete
     suspend fun delete(vararg article: Article)
 
     @Update
-    suspend fun update(vararg article: Article)
+    suspend fun updateInternal(vararg article: Article)
+
+    @Transaction
+    suspend fun update(vararg article: Article) {
+        article.forEach { it.refreshShadows() }
+        updateInternal(*article)
+    }
 
     @Transaction
     suspend fun insertListIfNotExist(articles: List<Article>, feed: Feed): List<Article> {
@@ -949,7 +974,13 @@ interface ArticleDao {
     ): List<Article>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertListIgnoreConflict(articles: List<Article>): List<Long>
+    suspend fun insertListIgnoreConflictInternal(articles: List<Article>): List<Long>
+
+    @Transaction
+    suspend fun insertListIgnoreConflict(articles: List<Article>): List<Long> {
+        articles.forEach { it.refreshShadows() }
+        return insertListIgnoreConflictInternal(articles)
+    }
 
     /**
      * S7 dedupe on ingest: an incoming article matches an existing row when
@@ -980,4 +1011,48 @@ interface ArticleDao {
         insertListIgnoreConflict(fresh)
         return fresh
     }
+
+    /**
+     * S11a single-term search over the S12a `*Lower` shadow columns with
+     * ESCAPE — the reference LIKE path for the canonical predicate (FTS
+     * cannot do mid-word substrings; body-only terms must work). Callers
+     * prep `:text` with `SearchSql.likeTerm(TextNormalizer.normalize(term))`.
+     * Ordering per S15 default: date DESC, rowid DESC.
+     */
+    @Transaction
+    @RewriteQueriesToDropUnusedColumns
+    @Query(
+        """
+        SELECT * FROM article
+        WHERE accountId = :accountId
+        AND (
+            titleLower LIKE '%' || :text || '%' ESCAPE '\'
+            OR shortLower LIKE '%' || :text || '%' ESCAPE '\'
+            OR rawLower LIKE '%' || :text || '%' ESCAPE '\'
+            OR fullLower LIKE '%' || :text || '%' ESCAPE '\'
+        )
+        ORDER BY date DESC, rowid DESC
+        """
+    )
+    fun searchArticleByShadowText(
+        accountId: Int,
+        text: String,
+    ): PagingSource<Int, ArticleWithFeed>
+
+    /**
+     * `tag:` CSV containment (S11a): matches when the normalized tag is a
+     * whole CSV element of feed.tags — `tech` must NOT match `biotech`.
+     */
+    @Query(
+        """
+        SELECT * FROM article
+        WHERE accountId = :accountId
+        AND EXISTS (
+            SELECT 1 FROM feed AS f2
+            WHERE f2.id = article.feedId
+            AND (',' || f2.tags || ',' LIKE '%,' || :tag || ',%')
+        )
+        """
+    )
+    suspend fun queryArticlesByTag(accountId: Int, tag: String): List<Article>
 }

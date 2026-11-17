@@ -86,4 +86,17 @@ data class Article(
 
     @Ignore
     var dateString: String? = null
+
+    /**
+     * S11a write-path invariant: recompute the S12a shadow columns from the
+     * source text fields. DAO writers call this so that entities built via
+     * `copy()` (which carries stale shadow values) still write fresh
+     * shadows IN THE SAME TRANSACTION.
+     */
+    fun refreshShadows() {
+        titleLower = TextNormalizer.normalize(title)
+        shortLower = TextNormalizer.normalize(shortDescription)
+        rawLower = TextNormalizer.normalize(rawDescription)
+        fullLower = TextNormalizer.normalize(fullContent)
+    }
 }
