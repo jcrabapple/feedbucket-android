@@ -221,8 +221,12 @@ dependencies {
 
     implementation(libs.timber)
 
+    // S30a — hardened offline renderer (androidx.webkit, Apache-2.0).
+    implementation(libs.webkit)
+
     // Testing
     testImplementation(libs.junit)
+    testImplementation(libs.work.testing)
     androidTestImplementation(libs.junit.ext)
     androidTestImplementation(libs.espresso)
     androidTestImplementation(libs.room.testing)
