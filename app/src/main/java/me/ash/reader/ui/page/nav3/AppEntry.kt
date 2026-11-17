@@ -192,6 +192,7 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 },
                                 navigateToTipsAndSupport = { backStack.add(Route.TipsAndSupport) },
                                 navigateToRules = { backStack.add(Route.Rules) },
+                                navigateToDownloads = { backStack.add(Route.Downloads) },
                             )
                         }
                     Route.Rules ->
@@ -207,6 +208,13 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                             RuleEditPage(
                                 ruleId = key.ruleId,
                                 viewModel = hiltViewModel<RulesViewModel>(),
+                                onBack = onBack,
+                            )
+                        }
+                    Route.Downloads ->
+                        NavEntry(key) {
+                            me.ash.reader.ui.page.settings.downloads.DownloadsPage(
+                                viewModel = hiltViewModel<me.ash.reader.ui.page.settings.downloads.DownloadsViewModel>(),
                                 onBack = onBack,
                             )
                         }

@@ -1270,6 +1270,30 @@ interface ArticleDao {
         readAt: Date?,
         expectedVersion: Long,
     ): Int
+
+    // --- S16/S28 — FTS coverage (account-scoped) & bulk download source -----
+
+    /** S16 — M = COUNT(*) FROM article WHERE accountId = :id. */
+    @Query("SELECT COUNT(*) FROM article WHERE accountId = :accountId")
+    fun countAccountArticlesFlow(accountId: Int): Flow<Int>
+
+    /**
+     * S16 — N = COUNT(article_fts ⋈ article ON article.rowid = article_fts.docid
+     * WHERE accountId = :id). The FTS docid space spans all accounts, so the
+     * join is required for an honest per-account coverage number (R4).
+     */
+    @Query(
+        """
+        SELECT COUNT(*) FROM article
+        INNER JOIN article_fts ON article.rowid = article_fts.docid
+        WHERE article.accountId = :accountId
+        """
+    )
+    fun countFtsCoveredArticlesFlow(accountId: Int): Flow<Int>
+
+    /** S28 — bulk "download all in scope" source (capped by DownloadPolicy). */
+    @Query("SELECT id FROM article WHERE accountId = :accountId AND isUnread = 1")
+    suspend fun queryUnreadIds(accountId: Int): List<String>
 }
 
 /** S7 — identity match: guid equality (both non-empty) OR link equality. */

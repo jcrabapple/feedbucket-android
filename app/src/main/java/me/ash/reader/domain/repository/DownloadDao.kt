@@ -1,6 +1,7 @@
 package me.ash.reader.domain.repository
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -8,6 +9,12 @@ import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import me.ash.reader.domain.model.download.ArticleDownload
 import me.ash.reader.domain.model.download.DownloadAsset
+
+/** S29 — a download row joined with its article title for the manage list. */
+data class DownloadWithTitle(
+    @Embedded val download: ArticleDownload,
+    val articleTitle: String?,
+)
 
 @Dao
 interface DownloadDao {
@@ -26,6 +33,15 @@ interface DownloadDao {
 
     @Query("SELECT * FROM article_download")
     suspend fun queryAll(): List<ArticleDownload>
+
+    @Query(
+        """
+        SELECT article_download.*, article.title AS articleTitle
+        FROM article_download INNER JOIN article ON article.id = article_download.articleId
+        ORDER BY article_download.requestedAt DESC
+        """
+    )
+    fun queryAllWithTitles(): Flow<List<DownloadWithTitle>>
 
     /** S28a — manual retry: failed -> pending and RESET the attempt counter. */
     @Query(

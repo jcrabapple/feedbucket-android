@@ -84,8 +84,34 @@ constructor(
     private val savedSearchService: me.ash.reader.domain.service.SavedSearchService,
     private val downloadDao: DownloadDao,
     private val downloadService: DownloadService,
+    private val articleDao: me.ash.reader.domain.repository.ArticleDao,
+    private val accountService: me.ash.reader.domain.service.AccountService,
     workManager: WorkManager,
 ) : ViewModel() {
+
+    /** S16 — "index covers N of M articles" (+ stale-sync notice). */
+    val searchCoverage = MutableStateFlow<SearchCoverage?>(null)
+
+    init {
+        // S16 — account-scoped FTS coverage indicator for the search UI.
+        viewModelScope.launch(ioDispatcher) {
+            val accountId = accountService.getCurrentAccountId()
+            kotlinx.coroutines.flow.combine(
+                articleDao.countFtsCoveredArticlesFlow(accountId),
+                articleDao.countAccountArticlesFlow(accountId),
+                accountService.currentAccountFlow,
+            ) { covered, total, account ->
+                SearchCoverage(
+                    covered = covered,
+                    total = total,
+                    stale =
+                        account?.updateAt?.let {
+                            System.currentTimeMillis() - it.time > SearchCoverage.STALE_SYNC_MILLIS
+                        } == true,
+                )
+            }.collect { searchCoverage.value = it }
+        }
+    }
 
     val flowUiState: StateFlow<FlowUiState?> =
         articleListUseCase.pagerFlow
@@ -676,6 +702,18 @@ constructor(
 }
 
 data class FlowUiState(val pagerData: PagerData, val nextFilterState: FilterState? = null)
+
+/** S16 — search-screen FTS coverage indicator (account-scoped, R4). */
+data class SearchCoverage(
+    val covered: Int,
+    val total: Int,
+    /** account.updateAt older than 24 h. */
+    val stale: Boolean,
+) {
+    companion object {
+        const val STALE_SYNC_MILLIS: Long = 24L * 3600 * 1000
+    }
+}
 
 data class ReadingUiState(
     val articleWithFeed: ArticleWithFeed? = null,

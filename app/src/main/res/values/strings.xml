@@ -451,11 +451,15 @@
     <string name="downloads_state_saved">Saved</string>
     <string name="downloads_state_text_only">Text saved · images %1$d/%2$d</string>
     <string name="downloads_state_waiting_wifi">Waiting for Wi-Fi</string>
+    <string name="downloads_state_queued">Queued</string>
+    <string name="downloads_state_downloading">Downloading…</string>
+    <string name="downloads_state_failed">Failed</string>
     <string name="downloads_state_failed_network">Failed: network</string>
     <string name="downloads_state_failed_storage">Failed: storage</string>
     <string name="downloads_state_failed_oversize">Failed: over size cap</string>
     <string name="downloads_remove">Remove download</string>
     <string name="downloads_remove_all">Remove all downloads</string>
+    <string name="downloads_empty">No downloads yet</string>
     <string name="downloads_remove_all_confirm">Remove %1$d downloads?</string>
     <string name="downloads_download_unread">Download unread articles (max %1$d)</string>
     <string name="search_fts_coverage">Index covers %1$d of %2$d articles</string>

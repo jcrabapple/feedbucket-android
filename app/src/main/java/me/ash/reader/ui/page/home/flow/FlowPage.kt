@@ -554,6 +554,31 @@ fun FlowPage(
                         onSaveSearch = { name, query -> viewModel.saveSearch(name, query) },
                         grammarHelp = true,
                     )
+                    // S16 — honest FTS coverage: "index covers N of M
+                    // articles" (account-scoped per R4) plus a stale-sync
+                    // notice when the last sync is over 24 h old.
+                    val searchCoverage = viewModel.searchCoverage.collectAsStateValue()
+                    searchCoverage?.let { coverage ->
+                        Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+                            Text(
+                                text =
+                                    stringResource(
+                                        R.string.search_fts_coverage,
+                                        coverage.covered,
+                                        coverage.total,
+                                    ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                            if (coverage.stale) {
+                                Text(
+                                    text = stringResource(R.string.search_fts_stale),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 RYExtensibleVisibility(markAsRead) {

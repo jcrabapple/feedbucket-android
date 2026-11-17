@@ -67,6 +67,8 @@ constructor(
         const val DOWNLOAD_TAG = "DOWNLOAD_TAG"
         const val ARTICLE_TAG_PREFIX = "download_article:"
         const val BULK_WORK_NAME = "download_bulk"
+        /** Distinguishes constraint-gated bulk work from per-article work. */
+        const val BULK_TAG = "download_bulk_tag"
 
         fun uniqueName(articleId: String) = "download-$articleId"
 
@@ -99,6 +101,7 @@ constructor(
         /** Bulk/chained request: UNMETERED, drains the whole pending batch. */
         fun bulkRequest(requiresCharging: Boolean = false): OneTimeWorkRequest =
             baseBuilder()
+                .addTag(BULK_TAG)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(

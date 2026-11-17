@@ -29,6 +29,9 @@ sealed interface Route : NavKey {
 
     @Serializable data class RuleEdit(val ruleId: Long) : Route
 
+    // Downloads (Wave F, S27a/S28/S29/S30a)
+    @Serializable data object Downloads : Route
+
     // Accounts
     @Serializable data object Accounts : Route
 

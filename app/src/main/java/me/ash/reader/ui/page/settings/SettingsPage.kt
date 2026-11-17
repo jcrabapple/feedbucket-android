@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.DownloadForOffline
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Palette
@@ -55,6 +56,7 @@ fun SettingsPage(
     navigateToTroubleshooting: () -> Unit,
     navigateToTipsAndSupport: () -> Unit,
     navigateToRules: () -> Unit,
+    navigateToDownloads: () -> Unit,
 ) {
     val context = LocalContext.current
     val newVersion = LocalNewVersionNumber.current
@@ -135,6 +137,15 @@ fun SettingsPage(
                         desc = stringResource(R.string.rules_desc),
                         icon = Icons.Outlined.Rule,
                         onClick = navigateToRules
+                    )
+                }
+                item {
+                    // S27a/S28/S29 — durable downloads & storage management.
+                    SelectableSettingGroupItem(
+                        title = stringResource(R.string.downloads),
+                        desc = stringResource(R.string.downloads_desc),
+                        icon = Icons.Outlined.DownloadForOffline,
+                        onClick = navigateToDownloads
                     )
                 }
                 item {
