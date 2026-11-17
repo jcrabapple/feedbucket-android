@@ -99,3 +99,11 @@ out/
 .vscode/
 
 signature
+# FeedBucket private signing & research artifacts (S31/S35a)
+keystore.properties
+*.keystore
+*.jks
+docs/research/logs/
+.plan/
+*.db
+build/recon/
