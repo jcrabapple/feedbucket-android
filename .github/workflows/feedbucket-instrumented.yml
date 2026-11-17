@@ -78,12 +78,11 @@ jobs:
           name: ci-logs-api35
           path: ci-logs/
 
-  # Experimental: API 36 (Baklava) pairing. Not a hard gate; results documented
-  # for the leftover API36 behavioral gate (docs/APPROVED-DIRECTION.md S38).
+  # Required gate: API 36 (Baklava) pairing. Both API levels must fully PASS
+  # (docs/APPROVED-DIRECTION.md S38 gate remains tracked for final UI work).
   api36:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    continue-on-error: true
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
       - name: JDK 21

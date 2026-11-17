@@ -277,14 +277,29 @@ class PositionPersistenceTest {
                 me.ash.reader.domain.model.position.RestoredPosition(1, 24),
                 recreated.restore(scope, listOf("1\$a", "1\$b", "1\$c")),
             )
-            // Anchor left the scope: index clamped to the list size.
+            // Anchor left the scope: saved index clamps into the valid range
+            // (1 is already in range for a 3-row list, so it is unchanged).
             assertEquals(
-                me.ash.reader.domain.model.position.RestoredPosition(2, 24),
+                me.ash.reader.domain.model.position.RestoredPosition(1, 24),
                 recreated.restore(scope, listOf("1\$a", "1\$x", "1\$c")),
             )
             // Missing row: null → top.
             assertNull(recreated.restore(PositionScope(view = "starred"), listOf("1\$a")))
         }
+
+    @Test
+    fun out_of_range_saved_index_clamps_to_last_valid_row() = runBlocking {
+        val dao = db.positionDao()
+        val scope = PositionScope(view = "unread")
+        PositionStore(dao).persist(scope, anchorArticleId = null, anchorItemIndex = 10, 24)
+
+        val recreated = PositionStore(dao)
+        // Saved index beyond the current list clamps to the last valid row.
+        assertEquals(
+            me.ash.reader.domain.model.position.RestoredPosition(2, 24),
+            recreated.restore(scope, listOf("1\$a", "1\$b", "1\$c")),
+        )
+    }
 
     @Test
     fun corrupt_position_row_falls_back_to_top_instead_of_crashing() =
@@ -308,6 +323,8 @@ class PositionPersistenceTest {
     fun reading_position_persists_and_restores_per_article() = runBlocking {
         val dao = db.positionDao()
         val store = PositionStore(dao)
+        // reading_position has an Article FK (S26): seed the article first.
+        db.articleDao().insert(article("a", 3000))
         store.persistReading("1\$a", scrollRatioPx = 4000, contentHeightPx = 20000)
 
         val recreated = PositionStore(dao)
