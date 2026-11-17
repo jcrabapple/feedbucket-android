@@ -160,7 +160,7 @@ When font scale is **≥1.6**, available detail width is **<320dp**, a display c
 
 ### 4.1 Chrome family and license
 
-Chrome uses bundled **Google Sans Flex v3.007**, weights 400/500/600/700. Existing binary: `app/src/main/res/font/google_sans_flex.ttf`. License: **SIL Open Font License 1.1**, copyright 2022 The Google Sans Flex Project Authors. Official notice: <https://github.com/googlefonts/googlesans-flex/blob/main/OFL.txt>. S36 requires the complete license and attribution in app notices. The self-contained mock embeds the unmodified font and the OFL notice.
+Chrome uses bundled **Google Sans Flex v3.007**, weights 400/500/600/700. Existing binary: `app/src/main/res/font/google_sans_flex.ttf`. License: **SIL Open Font License 1.1**. Copyright notice embedded in the bundled binary (nameID0): **Copyright 2015 Google LLC. All Rights Reserved.**; the googlesans-flex source project lists 2022 The Google Sans Flex Project Authors. Official notice: <https://github.com/googlefonts/googlesans-flex/blob/main/OFL.txt>. S36 requires the complete license and both notices in app notices. The self-contained mock embeds the unmodified font and the OFL notice.
 
 Use the full Material 15-role scale. Emphasized variants use weight 600 selectively for unread titles, the current scope and primary action labels. No all-caps metadata and no auto-sizing text.
 
@@ -549,6 +549,8 @@ Sources retrieved 2026-11-16:
 ## 11. Gate A contract clarifications required before foundation release
 
 These are not new features and this contract does not silently amend S#. Gate A must make the data wording consistent with these UI truths:
+
+**Status: all five RESOLVED by Gate A directly in docs (SPEC S18a / S27a / S32a; see `docs/READINESS-v1.md` §4) — no replanning round needed. Foundation and feature waves implement the amended wording.**
 
 1. **Undo version guard:** ledger stores BEFORE read/star/update/readAt values but the POST-apply `stateVersion` used for optimistic comparison. Otherwise every changed row is skipped or the guard is meaningless. UI copy remains “skipped M (changed after apply)”.
 2. **Import cascade guard:** removing an imported feed must be blocked when deleting it would FK-cascade a pre-existing, new or edited retained article. Per-row `stateStamp` alone cannot protect that graph. Result copy reserves “retained to protect other articles”.
