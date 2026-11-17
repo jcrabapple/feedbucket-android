@@ -73,11 +73,13 @@ class ArticleDaoUpdatedViewTest {
         guid: String = "guid-$id",
         publishedAt: Date? = t0,
         date: Date = publishedAt ?: t0,
+        isUnread: Boolean = true,
         isUpdated: Boolean = false,
         contentChangedAt: Date? = null,
         originalContent: String? = null,
         updateAt: Date = t0,
         fullContent: String? = null,
+        feedOverride: String? = null,
     ) = Article(
         id = "1\$$id",
         date = date,
@@ -86,10 +88,11 @@ class ArticleDaoUpdatedViewTest {
         shortDescription = short,
         fullContent = fullContent,
         link = link,
-        feedId = feed.id,
+        feedId = feedOverride ?: feed.id,
         accountId = 1,
         updateAt = updateAt,
         guid = guid,
+        isUnread = isUnread,
         publishedAt = publishedAt,
         isUpdated = isUpdated,
         contentChangedAt = contentChangedAt,
@@ -168,6 +171,76 @@ class ArticleDaoUpdatedViewTest {
         val after = row("a")
         assertFalse(after.isUpdated)
         assertEquals(t2, after.readAt)
+    }
+
+    // ---- S21a scoped mark-all-read drain of ALREADY-READ updated rows ----
+    // Review round 1 finding 2: a publisher update on an already-read row
+    // (isUnread=0, isUpdated=1) must be drained by scoped mark-all-read —
+    // web parity deletes from BOTH the unread and updated tables for every
+    // entry in the listing scope (db.py mark_all_read). The mark-unread
+    // direction must remain untouched.
+
+    @Test
+    fun markAllReadAccountScopeDrainsAlreadyReadUpdatedRows() = runBlocking {
+        db.articleDao().insert(article("upd", isUpdated = true, isUnread = false))
+        db.articleDao().insert(article("unr", isUpdated = true, isUnread = true))
+        db.articleDao().insert(article("rd", isUpdated = false, isUnread = false))
+
+        val count = db.articleDao().markAllAsRead(1, isUnread = false, before = t2)
+
+        assertEquals("read-updated and unread-updated rows both drain", 2, count)
+        assertFalse(row("upd").isUpdated)
+        assertFalse(row("unr").isUpdated)
+        assertTrue("updated view fully drained", updatedViewIds().isEmpty())
+    }
+
+    @Test
+    fun markAllReadGroupScopeDrainsOnlyThatGroup() = runBlocking {
+        db.groupDao().insert(Group(id = "1\$g2", name = "Other", accountId = 1))
+        val feed2 =
+            Feed(
+                id = "1\$f2", name = "Other Feed", url = "https://example.com/o.xml",
+                groupId = "1\$g2", accountId = 1, tags = "other",
+            )
+        db.feedDao().insert(feed2)
+        db.articleDao().insert(article("upd", isUpdated = true, isUnread = false))
+        db.articleDao().insert(article("out", isUpdated = true, isUnread = false, feedOverride = feed2.id))
+
+        val count = db.articleDao().markAllAsReadByGroupId(1, "1\$g1", isUnread = false, before = t2)
+
+        assertEquals(1, count)
+        assertFalse(row("upd").isUpdated)
+        assertTrue("other group's updated row untouched", row("out").isUpdated)
+    }
+
+    @Test
+    fun markAllReadFeedScopeDrainsOnlyThatFeed() = runBlocking {
+        db.groupDao().insert(Group(id = "1\$g2", name = "Other", accountId = 1))
+        val feed2 =
+            Feed(
+                id = "1\$f2", name = "Other Feed", url = "https://example.com/o.xml",
+                groupId = "1\$g2", accountId = 1, tags = "other",
+            )
+        db.feedDao().insert(feed2)
+        db.articleDao().insert(article("upd", isUpdated = true, isUnread = false))
+        db.articleDao().insert(article("out", isUpdated = true, isUnread = false, feedOverride = feed2.id))
+
+        val count = db.articleDao().markAllAsReadByFeedId(1, feed.id, isUnread = false, before = t2)
+
+        assertEquals(1, count)
+        assertFalse(row("upd").isUpdated)
+        assertTrue("other feed's updated row untouched", row("out").isUpdated)
+    }
+
+    @Test
+    fun markAllUnreadLeavesUpdatedRowsQueued() = runBlocking {
+        db.articleDao().insert(article("upd", isUpdated = true, isUnread = false))
+
+        val count = db.articleDao().markAllAsRead(1, isUnread = true, before = t2)
+
+        assertEquals(1, count)
+        assertTrue("mark-unread must NOT drain the updated queue", row("upd").isUpdated)
+        assertTrue(row("upd").isUnread)
     }
 
     @Test

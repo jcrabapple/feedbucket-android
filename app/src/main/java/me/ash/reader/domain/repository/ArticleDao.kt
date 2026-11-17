@@ -136,7 +136,12 @@ interface ArticleDao {
     /**
      * S21a/S23 scoped mark-all-read (whole account): sets readAt, clears isUpdated,
      * bumps stateVersion on every flipped row; returns the exact affected count
-     * (S25a confirmation parity with web mark_all_read).
+     * (S25a confirmation parity with web mark_all_read). The predicate also
+     * drains ALREADY-READ updated rows (isUnread=0, isUpdated=1): web
+     * mark_all_read deletes from BOTH the unread and updated tables for
+     * every entry in the listing scope (db.py:1002-1026) — review round 1
+     * finding 2. The mark-UNREAD direction is unchanged (the isUpdated
+     * clause requires :isUnread = 0).
      */
     @Transaction
     @Query(
@@ -148,7 +153,7 @@ interface ArticleDao {
             stateVersion = stateVersion + 1
         WHERE accountId = :accountId
         AND date < :before
-        AND isUnread != :isUnread
+        AND (isUnread != :isUnread OR (isUpdated != 0 AND :isUnread = 0))
         """
     )
     suspend fun markAllAsRead(
@@ -159,8 +164,8 @@ interface ArticleDao {
     ): Int
 
     /**
-     * S21a/S23 scoped mark-all-read (group). Same write semantics and count
-     * contract as [markAllAsRead].
+     * S21a/S23 scoped mark-all-read (group). Same write semantics, drain,
+     * and count contract as [markAllAsRead].
      */
     @Transaction
     @Query(
@@ -175,7 +180,7 @@ interface ArticleDao {
             WHERE groupId = :groupId
         )
         AND accountId = :accountId
-        AND isUnread != :isUnread
+        AND (isUnread != :isUnread OR (isUpdated != 0 AND :isUnread = 0))
         AND date < :before
         """
     )
@@ -188,8 +193,8 @@ interface ArticleDao {
     ): Int
 
     /**
-     * S21a/S23 scoped mark-all-read (feed). Same write semantics and count
-     * contract as [markAllAsRead].
+     * S21a/S23 scoped mark-all-read (feed). Same write semantics, drain,
+     * and count contract as [markAllAsRead].
      */
     @Transaction
     @Query(
@@ -201,7 +206,7 @@ interface ArticleDao {
             stateVersion = stateVersion + 1
         WHERE feedId = :feedId
         AND accountId = :accountId
-        AND isUnread != :isUnread
+        AND (isUnread != :isUnread OR (isUpdated != 0 AND :isUnread = 0))
         AND date < :before
         """
     )
