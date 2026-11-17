@@ -233,4 +233,7 @@ dependencies {
     testImplementation(libs.mockito.core)
     testImplementation(libs.mockito.junit.jupiter)
     testImplementation(libs.mockito.kotlin)
+    // Wave G (S32a): real SQLite for synthetic fixture DBs in JVM tests —
+    // Apache-2.0, test scope only (S36 license record in review packet).
+    testImplementation(libs.sqlite.jdbc)
 }

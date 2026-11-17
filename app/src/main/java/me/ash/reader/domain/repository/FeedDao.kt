@@ -171,6 +171,10 @@ interface FeedDao {
 
     @Insert suspend fun insertAll(feeds: List<Feed>)
 
+    /** S32a step 7 — provenance removal deletes the feed row by id. */
+    @Query("DELETE FROM feed WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Update suspend fun updateAll(feeds: List<Feed>)
 
     @Transaction

@@ -812,6 +812,10 @@ interface ArticleDao {
     @Delete
     suspend fun delete(vararg article: Article)
 
+    /** S32a step 7 — provenance removal deletes the article row by id. */
+    @Query("DELETE FROM article WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Update
     suspend fun updateInternal(vararg article: Article)
 
@@ -854,6 +858,10 @@ interface ArticleDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertListIgnoreConflictInternal(articles: List<Article>): List<Long>
+
+    /** S32a step 7 — cascade guard: article ids of one feed (removal walk). */
+    @Query("SELECT id FROM article WHERE feedId = :feedId")
+    suspend fun queryIdsByFeed(feedId: String): List<String>
 
     @Transaction
     suspend fun insertListIgnoreConflict(articles: List<Article>): List<Long> {

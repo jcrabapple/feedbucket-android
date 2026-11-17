@@ -74,6 +74,10 @@ interface GroupDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(vararg group: Group)
 
+    /** S32a step 7 — provenance removal deletes the group row by id. */
+    @Query("DELETE FROM `group` WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Update suspend fun update(vararg group: Group)
 
     @Delete suspend fun delete(vararg group: Group)
