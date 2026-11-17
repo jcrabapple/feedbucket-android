@@ -383,6 +383,18 @@ fun ReadingPage(
                                             isLoading = content is ReaderState.Loading,
                                             scrollState = scrollState,
                                             listState = listState,
+                                            // S22 — the diff compares sanitized originalContent
+                                            // against the CURRENT rawDescription, so it is only
+                                            // offered on the description render path (never
+                                            // against extracted full content).
+                                            originalContent =
+                                                if (content is ReaderState.Description) {
+                                                    readingUiState.articleWithFeed?.article?.originalContent
+                                                } else {
+                                                    null
+                                                },
+                                            contentChangedAt =
+                                                readingUiState.articleWithFeed?.article?.contentChangedAt,
                                             onImageClick = { imgUrl, altText ->
                                                 currentImageData = ImageData(imgUrl, altText)
                                                 showFullScreenImageViewer = true

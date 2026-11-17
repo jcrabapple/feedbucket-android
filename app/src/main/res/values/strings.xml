@@ -436,4 +436,9 @@
     <string name="saved_search_delete_confirm">Delete saved search "%1$s"?</string>
     <string name="search_grammar_help">Search grammar</string>
     <string name="search_grammar_help_body">Words match article titles and text (all words must match). Use quotes for phrases: "bar baz". Filter by feed tag with tag:tech. Sort with sort:asc, sort:desc or sort:relevance. Matching is case-insensitive Unicode lowercase: no regex, no boolean operators; ß does not match ss.</string>
+    <string name="view_changes">View changes</string>
+    <string name="hide_changes">Hide changes</string>
+    <string name="updated_caption">Updated %1$s</string>
+    <string name="diff_deleted_prefix">deleted: </string>
+    <string name="diff_inserted_prefix">inserted: </string>
 </resources>
