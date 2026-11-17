@@ -18,8 +18,11 @@ import kotlinx.coroutines.flow.Flow
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleMeta
 import me.ash.reader.domain.model.article.ArticleWithFeed
+import me.ash.reader.domain.model.article.UpdateDetection
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.feed.ImportantNum
+import me.ash.reader.domain.model.query.QueryMatcher
+import me.ash.reader.domain.model.query.TextNormalizer
 import me.ash.reader.domain.model.rule.ActionRule
 import me.ash.reader.domain.model.rule.ArticleApplyState
 import me.ash.reader.domain.service.RuleEngine
@@ -832,16 +835,31 @@ interface ArticleDao {
     }
 
     /**
-     * S7 dedupe on ingest: an incoming article matches an existing row when
-     * feedId matches AND (guid non-empty AND equals existing guid) OR (link
-     * non-empty AND equals existing link). Matches take the update path in
-     * later waves (S20a); here they are skipped exactly like the upstream
-     * link-only path, keeping this wave's sync semantics byte-identical.
-     * INSERT uses IGNORE on the PK as the last-resort race guard for two
-     * workers computing the same deterministic S6 id.
+     * S20a/S17a — the full web `store_entries` state machine
+     * (db.py:476-581), replacing skip-on-identity ingest. NEW articles
+     * insert with S17a standard-rule effects (mark_read suppresses unread;
+     * star budget 100/run). MATCHED rows run [UpdateDetection] (S20a):
+     * compare keys on `publishedAt` (NEVER `date`, R7), the first-version
+     * snapshot gate (showUpdates × !extracted × recency × significance),
+     * extracted rows update ONLY title/link/author/publishedAt(+date),
+     * web rows also content fields + `*Lower` shadows,
+     * `isUpdated`/`contentChangedAt` only when the feed shows updates,
+     * `updateAt` on every changed row — then S17a update effects
+     * (mark_read clears isUnread AND isUpdated; star is skipped). One
+     * transaction per feed (web store_entries parity).
+     *
+     * Returns the newly inserted articles (notification parity with the
+     * former insertListIfNotExist* contract).
      */
     @Transaction
-    suspend fun insertListIfNotExistByIdentity(articles: List<Article>, feed: Feed): List<Article> {
+    suspend fun storeEntries(
+        articles: List<Article>,
+        feed: Feed,
+        feedTags: List<String>,
+        groupName: String?,
+        rules: List<ActionRule>,
+        now: Date,
+    ): List<Article> {
         if (articles.isEmpty()) return articles
 
         val existingArticles = queryByFeedIdGuidsOrLinks(
@@ -851,15 +869,175 @@ interface ArticleDao {
             links = articles.map { it.link },
         )
 
-        val fresh = articles.filterNot { incoming ->
-            existingArticles.any { existing ->
-                (incoming.guid.isNotEmpty() && existing.guid.isNotEmpty() && existing.guid == incoming.guid) ||
-                    (incoming.link.isNotEmpty() && existing.link.isNotEmpty() && existing.link == incoming.link)
+        // S7 partition: identity match → S20a update path; no match → insert.
+        val matched = mutableListOf<Pair<Article, Article>>()
+        val fresh = mutableListOf<Article>()
+        for (incoming in articles) {
+            val existing = existingArticles.firstOrNull { identityMatches(it, incoming) }
+            if (existing != null) matched += incoming to existing else fresh += incoming
+        }
+
+        // S17a new-article path (unchanged behavior; star budget per run).
+        val withEffects = RuleEngine.applyToNewArticles(fresh, feedTags, groupName, rules)
+        insertListIgnoreConflict(withEffects.articles)
+
+        val standardRules = rules.filter { it.type == ActionRule.TYPE_STANDARD }
+        for ((incoming, existing) in matched) {
+            when (
+                val decision =
+                    UpdateDetection.decide(existing, incoming, feed.showUpdates, now)
+            ) {
+                UpdateDetection.Decision.Unchanged -> Unit
+                is UpdateDetection.Decision.Update -> {
+                    val plan = decision.plan
+                    // Snapshot FIRST (web order): captures the OLD content.
+                    if (plan.snapshotWrite) {
+                        writeUpdateSnapshot(existing.id, existing.rawDescription)
+                    }
+                    val extracted = existing.fullContent != null
+                    val titleLower = TextNormalizer.normalize(plan.title)
+                    if (extracted) {
+                        applyExtractedUpdate(
+                            id = existing.id,
+                            title = plan.title,
+                            titleLower = titleLower,
+                            link = plan.link,
+                            author = plan.author,
+                            publishedAt = plan.publishedAt,
+                            date = plan.date,
+                            updateAt = plan.updateAt,
+                            markUpdated = plan.markUpdated,
+                            contentChangedAt = plan.contentChangedAt,
+                        )
+                    } else {
+                        applyWebUpdate(
+                            id = existing.id,
+                            title = plan.title,
+                            titleLower = titleLower,
+                            link = plan.link,
+                            author = plan.author,
+                            rawDescription = plan.rawDescription,
+                            rawLower = TextNormalizer.normalize(plan.rawDescription),
+                            shortDescription = plan.shortDescription,
+                            shortLower = TextNormalizer.normalize(plan.shortDescription),
+                            img = plan.img,
+                            publishedAt = plan.publishedAt,
+                            date = plan.date,
+                            updateAt = plan.updateAt,
+                            markUpdated = plan.markUpdated,
+                            contentChangedAt = plan.contentChangedAt,
+                        )
+                    }
+                    // S17a update effects: matching mark_read clears
+                    // isUnread AND isUpdated (web set_read on update);
+                    // star is NEVER applied on updates. Web matches over
+                    // OLD content for extracted rows, NEW otherwise.
+                    if (standardRules.isNotEmpty() &&
+                        RuleEngine.shouldMarkReadOnUpdate(
+                            QueryMatcher.Fields(
+                                title = plan.title,
+                                shortDescription =
+                                    if (extracted) existing.shortDescription
+                                    else plan.shortDescription,
+                                rawDescription =
+                                    if (extracted) existing.rawDescription
+                                    else plan.rawDescription,
+                                fullContent = existing.fullContent,
+                            ),
+                            feedTags,
+                            groupName,
+                            standardRules,
+                        )
+                    ) {
+                        applyUpdateMarkRead(existing.id, now)
+                    }
+                }
             }
         }
-        insertListIgnoreConflict(fresh)
-        return fresh
+        return withEffects.articles
     }
+
+    /** S20a snapshot write: first version only (gate evaluated by caller). */
+    @Query("UPDATE article SET originalContent = :originalContent WHERE id = :id")
+    suspend fun writeUpdateSnapshot(id: String, originalContent: String): Int
+
+    /**
+     * S20a extracted-row update: ONLY title/link/author/publishedAt(+date)
+     * change — feed-provided content never clobbers the extraction.
+     * `isUpdated`/`contentChangedAt`/`stateVersion` move only when the
+     * feed shows updates (S18a choke point).
+     */
+    @Query(
+        """
+        UPDATE article SET
+            title = :title, titleLower = :titleLower, link = :link, author = :author,
+            publishedAt = :publishedAt, date = :date, updateAt = :updateAt,
+            isUpdated = CASE WHEN :markUpdated THEN 1 ELSE isUpdated END,
+            contentChangedAt = CASE WHEN :markUpdated THEN :contentChangedAt ELSE contentChangedAt END,
+            stateVersion = CASE WHEN :markUpdated THEN stateVersion + 1 ELSE stateVersion END
+        WHERE id = :id
+        """
+    )
+    suspend fun applyExtractedUpdate(
+        id: String,
+        title: String,
+        titleLower: String,
+        link: String,
+        author: String?,
+        publishedAt: Date?,
+        date: Date,
+        updateAt: Date,
+        markUpdated: Boolean,
+        contentChangedAt: Date?,
+    ): Int
+
+    /** S20a web-row update: content fields + S12a shadow refresh in one write. */
+    @Query(
+        """
+        UPDATE article SET
+            title = :title, titleLower = :titleLower, link = :link, author = :author,
+            rawDescription = :rawDescription, rawLower = :rawLower,
+            shortDescription = :shortDescription, shortLower = :shortLower,
+            img = :img,
+            publishedAt = :publishedAt, date = :date, updateAt = :updateAt,
+            isUpdated = CASE WHEN :markUpdated THEN 1 ELSE isUpdated END,
+            contentChangedAt = CASE WHEN :markUpdated THEN :contentChangedAt ELSE contentChangedAt END,
+            stateVersion = CASE WHEN :markUpdated THEN stateVersion + 1 ELSE stateVersion END
+        WHERE id = :id
+        """
+    )
+    suspend fun applyWebUpdate(
+        id: String,
+        title: String,
+        titleLower: String,
+        link: String,
+        author: String?,
+        rawDescription: String,
+        rawLower: String,
+        shortDescription: String,
+        shortLower: String,
+        img: String?,
+        publishedAt: Date?,
+        date: Date,
+        updateAt: Date,
+        markUpdated: Boolean,
+        contentChangedAt: Date?,
+    ): Int
+
+    /**
+     * S17a update-path mark_read effect: clears isUnread AND isUpdated and
+     * stamps readAt (web set_read on update; star skipped by the caller
+     * never applying it). stateVersion bump per the S18a choke point.
+     */
+    @Query(
+        """
+        UPDATE article SET
+            isUnread = 0, isUpdated = 0, readAt = :readAt,
+            stateVersion = stateVersion + 1
+        WHERE id = :id
+        """
+    )
+    suspend fun applyUpdateMarkRead(id: String, readAt: Date): Int
 
     /**
      * S11a single-term search over the S12a `*Lower` shadow columns with
@@ -1087,41 +1265,12 @@ interface ArticleDao {
         readAt: Date?,
         expectedVersion: Long,
     ): Int
-
-    /**
-     * S17a ingest application — the same transaction boundary as the plain
-     * identity insert, with STANDARD-rule effects applied to the fresh
-     * (newly inserted) articles before the INSERT (S17a/R1: mutes never
-     * apply here — callers may pass them; [RuleEngine] ignores them).
-     * [feedTags] is the feed's tags CSV split; [groupName] its group name;
-     * [rules] the S13-scope-resolved standard rules for this feed.
-     */
-    @Transaction
-    suspend fun insertListIfNotExistByIdentityWithRules(
-        articles: List<Article>,
-        feed: Feed,
-        feedTags: List<String>,
-        groupName: String?,
-        rules: List<ActionRule>,
-    ): List<Article> {
-        if (articles.isEmpty()) return articles
-        val existingArticles = queryByFeedIdGuidsOrLinks(
-            feedId = feed.id,
-            accountId = feed.accountId,
-            guids = articles.map { it.guid },
-            links = articles.map { it.link },
-        )
-        val fresh = articles.filterNot { incoming ->
-            existingArticles.any { existing ->
-                (incoming.guid.isNotEmpty() && existing.guid.isNotEmpty() && existing.guid == incoming.guid) ||
-                    (incoming.link.isNotEmpty() && existing.link.isNotEmpty() && existing.link == incoming.link)
-            }
-        }
-        val withEffects = RuleEngine.applyToNewArticles(fresh, feedTags, groupName, rules)
-        insertListIgnoreConflict(withEffects.articles)
-        return withEffects.articles
-    }
 }
+
+/** S7 — identity match: guid equality (both non-empty) OR link equality. */
+private fun identityMatches(existing: Article, incoming: Article): Boolean =
+    (incoming.guid.isNotEmpty() && existing.guid.isNotEmpty() && existing.guid == incoming.guid) ||
+        (incoming.link.isNotEmpty() && existing.link.isNotEmpty() && existing.link == incoming.link)
 
 /** S25a — one ordered row of a scope snapshot (see [ArticleDao.queryScopeRows]). */
 data class ScopeRow(

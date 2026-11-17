@@ -109,18 +109,21 @@ constructor(
                                 }
 
                             val newArticles =
-                                if (standardRules.isEmpty()) {
-                                    articleDao.insertListIfNotExistByIdentity(
-                                        articles = fetchedArticles,
-                                        feed = currentFeed,
-                                    )
-                                } else {
-                                    // S13 scope resolution against this
-                                    // account's feeds/groups; effects are
-                                    // applied INSIDE the per-feed insert
-                                    // transaction (same tx boundary as web
-                                    // store_entries).
-                                    val applicable =
+                                // S20a/S17a — the full web store_entries
+                                // state machine in ONE per-feed transaction:
+                                // new articles insert with rule effects;
+                                // identity matches run the S20a update path
+                                // (snapshot gate, updated queue, S17a update
+                                // effects). S13 scope resolution happens
+                                // against this account's feeds/groups.
+                                articleDao.storeEntries(
+                                    articles = fetchedArticles,
+                                    feed = currentFeed,
+                                    feedTags =
+                                        currentFeed.tags.split(',').filter { it.isNotEmpty() },
+                                    groupName =
+                                        accountGroups.firstOrNull { it.id == currentFeed.groupId }?.name,
+                                    rules =
                                         standardRules.filter { rule ->
                                             currentFeed.id in
                                                 QueryMatcher.resolveScope(
@@ -130,17 +133,9 @@ constructor(
                                                     feeds = scopedFeeds,
                                                     groups = accountGroups,
                                                 )
-                                        }
-                                    val groupName =
-                                        accountGroups.firstOrNull { it.id == currentFeed.groupId }?.name
-                                    articleDao.insertListIfNotExistByIdentityWithRules(
-                                        articles = fetchedArticles,
-                                        feed = currentFeed,
-                                        feedTags = currentFeed.tags.split(',').filter { it.isNotEmpty() },
-                                        groupName = groupName,
-                                        rules = applicable,
-                                    )
-                                }
+                                        },
+                                    now = preDate,
+                                )
                             if (currentFeed.isNotification && newArticles.isNotEmpty()) {
                                 notificationHelper.notify(
                                     fetchedFeed.copy(articles = newArticles, feed = currentFeed)
