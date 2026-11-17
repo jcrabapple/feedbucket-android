@@ -125,7 +125,7 @@ class OfflineRenderTest {
 
     @Test
     fun hardenedWebSettingsAreApplied() {
-        val webView = WebView(context)
+        val webView = newWebViewOnMainThread()
         OfflineArticleClient.harden(webView.settings)
         assertFalse(webView.settings.javaScriptEnabled)
         assertFalse(webView.settings.domStorageEnabled)
@@ -147,7 +147,7 @@ class OfflineRenderTest {
                 assetLoader = OfflineArticleClient.assetLoaderFor(context, target.articleDir(context)),
                 onOpenLink = { openedExternally.add(it) },
             )
-        val webView = WebView(context)
+        val webView = newWebViewOnMainThread()
 
         for (scheme in OfflineArticleOrigin.BLOCKED_SCHEMES) {
             val url = scheme + "payload"
@@ -173,7 +173,7 @@ class OfflineRenderTest {
                 assetLoader = OfflineArticleClient.assetLoaderFor(context, target.articleDir(context)),
                 onOpenLink = { openedExternally.add(it) },
             )
-        val webView = WebView(context)
+        val webView = newWebViewOnMainThread()
 
         val served = client.shouldInterceptRequest(webView, request(target.pageUrl()))
         assertNotNull("fixture index.html must be served from the store", served?.data)
@@ -181,6 +181,19 @@ class OfflineRenderTest {
         // Link taps route to the external browser intent, never in-view.
         assertTrue(client.shouldOverrideUrlLoading(webView, request("https://example.com/article")))
         assertEquals(listOf("https://example.com/article"), openedExternally)
+    }
+
+    /** WebView must be created on a Looper thread (main), with a themed context. */
+    private fun newWebViewOnMainThread(): WebView {
+        var webView: WebView? = null
+        val themed =
+            android.view.ContextThemeWrapper(
+                context,
+                android.R.style.Theme_Material_Light_NoActionBar,
+            )
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .runOnMainSync { webView = WebView(themed) }
+        return webView!!
     }
 
     private fun request(url: String): WebResourceRequest =
