@@ -24,6 +24,11 @@ sealed interface Route : NavKey {
     // Settings
     @Serializable data object Settings : Route
 
+    // Rules & mutes (Wave D, S17a/S18a)
+    @Serializable data object Rules : Route
+
+    @Serializable data class RuleEdit(val ruleId: Long) : Route
+
     // Accounts
     @Serializable data object Accounts : Route
 

@@ -6,6 +6,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
@@ -36,10 +38,17 @@ fun SearchBar(
     focusRequester: FocusRequester = remember { FocusRequester() },
     onValueChange: (String) -> Unit = {},
     onClose: () -> Unit = {},
+    /** S15 — when non-null, a "save search" action is offered for non-blank input. */
+    onSaveSearch: ((name: String, query: String) -> Unit)? = null,
+    /** S10 — show the honest grammar help action. */
+    grammarHelp: Boolean = false,
 ) {
     val focusManager = LocalFocusManager.current
 
     var input by remember { mutableStateOf(value) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var showGrammarHelp by remember { mutableStateOf(false) }
+    var savedSearchName by remember { mutableStateOf("") }
 
     Surface(
         modifier = Modifier
@@ -106,6 +115,27 @@ fun SearchBar(
                     )
                 )
             }
+            if (grammarHelp) {
+                IconButton(onClick = { showGrammarHelp = true }) {
+                    Icon(
+                        imageVector = Icons.Outlined.HelpOutline,
+                        contentDescription = stringResource(R.string.search_grammar_help),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (onSaveSearch != null && input.isNotBlank()) {
+                IconButton(onClick = {
+                    savedSearchName = ""
+                    showSaveDialog = true
+                }) {
+                    Icon(
+                        imageVector = Icons.Outlined.BookmarkAdd,
+                        contentDescription = stringResource(R.string.saved_search_save),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             IconButton(onClick = { onClose() }) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
@@ -114,5 +144,46 @@ fun SearchBar(
                 )
             }
         }
+    }
+
+    // S15 — save the current query string VERBATIM under a (non-unique) name.
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text(stringResource(R.string.saved_search_save)) },
+            text = {
+                TextField(
+                    value = savedSearchName,
+                    onValueChange = { savedSearchName = it },
+                    placeholder = { Text(stringResource(R.string.saved_search_name_hint)) },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = savedSearchName.isNotBlank(),
+                    onClick = {
+                        onSaveSearch?.invoke(savedSearchName, input)
+                        showSaveDialog = false
+                    },
+                ) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
+    // S10 — honest grammar statement (no regex/boolean claims; the S12a
+    // simple-lowercase limitation is stated explicitly).
+    if (showGrammarHelp) {
+        AlertDialog(
+            onDismissRequest = { showGrammarHelp = false },
+            title = { Text(stringResource(R.string.search_grammar_help)) },
+            text = { Text(stringResource(R.string.search_grammar_help_body)) },
+            confirmButton = {
+                TextButton(onClick = { showGrammarHelp = false }) { Text(stringResource(R.string.confirm)) }
+            },
+        )
     }
 }

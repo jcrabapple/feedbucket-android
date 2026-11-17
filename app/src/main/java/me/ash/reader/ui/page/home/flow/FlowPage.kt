@@ -13,12 +13,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
@@ -28,6 +32,7 @@ import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.ExperimentalMaterialApi
@@ -42,13 +47,16 @@ import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +65,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -89,6 +98,7 @@ import me.ash.reader.domain.model.article.ArticleWithFeed
 import me.ash.reader.domain.model.general.Filter
 import me.ash.reader.domain.model.general.MarkAsReadConditions
 import me.ash.reader.domain.model.position.PositionScope
+import me.ash.reader.domain.model.search.SavedSearch
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListDateStickyHeader
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListFeedIcon
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListTonalElevation
@@ -191,6 +201,11 @@ fun FlowPage(
     // S25a confirmation dialog state: the pending condition and exact scoped count.
     var confirmMarkAll by remember { mutableStateOf<MarkAsReadConditions?>(null) }
     var confirmMarkAllCount by remember { mutableStateOf(0) }
+
+    // S15 — saved search under management (rename/delete dialog).
+    var managedSearch by remember { mutableStateOf<SavedSearch?>(null) }
+    var manageName by remember { mutableStateOf("") }
+    var confirmDeleteSearch by remember { mutableStateOf<SavedSearch?>(null) }
 
     val sortByEarliest =
         filterUiState.filter.isUnread() &&
@@ -533,6 +548,11 @@ fun FlowPage(
                             onSearch = false
                             viewModel.inputSearchContent(null)
                         },
+                        // S15 — persist the current query verbatim as a saved
+                        // search; S10 — the grammar help states the grammar
+                        // honestly (no regex/boolean claims).
+                        onSaveSearch = { name, query -> viewModel.saveSearch(name, query) },
+                        grammarHelp = true,
                     )
                 }
 
@@ -592,6 +612,58 @@ fun FlowPage(
                         },
                         dismissButton = {
                             TextButton(onClick = { confirmMarkAll = null }) {
+                                Text(stringResource(R.string.cancel))
+                            }
+                        },
+                    )
+                }
+                // S15 — saved search management: rename (keeps the verbatim
+                // query) or delete.
+                managedSearch?.let { saved ->
+                    AlertDialog(
+                        onDismissRequest = { managedSearch = null },
+                        title = { Text(stringResource(R.string.saved_search_rename)) },
+                        text = {
+                            TextField(
+                                value = manageName,
+                                onValueChange = { manageName = it },
+                                placeholder = { Text(stringResource(R.string.saved_search_name_hint)) },
+                                singleLine = true,
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = manageName.isNotBlank() && manageName != saved.name,
+                                onClick = {
+                                    viewModel.renameSearch(saved.id, manageName)
+                                    managedSearch = null
+                                },
+                            ) { Text(stringResource(R.string.save)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmDeleteSearch = saved }) {
+                                Text(stringResource(R.string.delete))
+                            }
+                        },
+                    )
+                }
+                confirmDeleteSearch?.let { saved ->
+                    AlertDialog(
+                        onDismissRequest = { confirmDeleteSearch = null },
+                        text = {
+                            Text(stringResource(R.string.saved_search_delete_confirm, saved.name))
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.deleteSearch(saved.id)
+                                    confirmDeleteSearch = null
+                                    managedSearch = null
+                                },
+                            ) { Text(stringResource(R.string.confirm)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmDeleteSearch = null }) {
                                 Text(stringResource(R.string.cancel))
                             }
                         },
@@ -833,35 +905,73 @@ fun FlowPage(
             },
             floatingActionButtonPosition = FabPosition.Center,
             bottomBar = {
-                FilterBar(
-                    modifier =
-                        with(sharedTransitionScope) {
-                            Modifier.sharedElement(
-                                sharedContentState = rememberSharedContentState("filterBar"),
-                                animatedVisibilityScope = animatedVisibilityScope,
-                            )
-                        },
-                    filter = filterUiState.filter,
-                    filters =
-                        if (hideRecentlyRead) {
-                            // S15 — HideRecentlyReadPreference (default OFF) hides
-                            // the recentlyRead view from the bar; the view itself
-                            // still exists.
-                            Filter.values.filter { it != Filter.Read }
+                // S15 — saved searches execute as view=all + verbatim query;
+                // long-press manages (rename/delete).
+                val savedSearches by viewModel.savedSearches.collectAsState()
+                Column {
+                    if (savedSearches.isNotEmpty()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 0.dp,
+                        ) {
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState())
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                savedSearches.forEach { saved ->
+                                    SavedSearchChip(
+                                        name = saved.name,
+                                        selected = filterUiState.searchContent == saved.query,
+                                        onClick = {
+                                            if (filterUiState.searchContent == saved.query) {
+                                                viewModel.inputSearchContent(null)
+                                            } else {
+                                                viewModel.applySavedSearch(saved.query)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            manageName = saved.name
+                                            managedSearch = saved
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    FilterBar(
+                        modifier =
+                            with(sharedTransitionScope) {
+                                Modifier.sharedElement(
+                                    sharedContentState = rememberSharedContentState("filterBar"),
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                )
+                            },
+                        filter = filterUiState.filter,
+                        filters =
+                            if (hideRecentlyRead) {
+                                // S15 — HideRecentlyReadPreference (default OFF) hides
+                                // the recentlyRead view from the bar; the view itself
+                                // still exists.
+                                Filter.values.filter { it != Filter.Read }
+                            } else {
+                                Filter.values
+                            },
+                        filterBarStyle = filterBarStyle.value,
+                        filterBarFilled = true,
+                        filterBarPadding = filterBarPadding.dp,
+                        filterBarTonalElevation = filterBarTonalElevation.value.dp,
+                    ) {
+                        if (filterUiState.filter != it) {
+                            viewModel.changeFilter(filterUiState.copy(filter = it))
                         } else {
-                            Filter.values
-                        },
-                    filterBarStyle = filterBarStyle.value,
-                    filterBarFilled = true,
-                    filterBarPadding = filterBarPadding.dp,
-                    filterBarTonalElevation = filterBarTonalElevation.value.dp,
-                ) {
-                    if (filterUiState.filter != it) {
-                        viewModel.changeFilter(filterUiState.copy(filter = it))
-                    } else {
-                        scope.launch {
-                            if (listState.firstVisibleItemIndex != 0) {
-                                listState.animateScrollToItem(0)
+                            scope.launch {
+                                if (listState.firstVisibleItemIndex != 0) {
+                                    listState.animateScrollToItem(0)
+                                }
                             }
                         }
                     }

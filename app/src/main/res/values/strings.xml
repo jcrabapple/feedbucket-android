@@ -396,4 +396,44 @@
     <string name="parse_full_content_desc">Fetch full articles from webpages</string>
     <string name="enable">Enable</string>
     <string name="disable">Disable</string>
+
+    <!-- Wave D — rules, mutes, saved searches (S10/S15/S17a/S18a) -->
+    <string name="rules">Rules</string>
+    <string name="rules_desc">Automate marking read, starring, and muting</string>
+    <string name="rule_new">New rule</string>
+    <string name="rule_edit">Edit rule</string>
+    <string name="rule_name">Name</string>
+    <string name="rule_name_hint">e.g. Star tech news</string>
+    <string name="rule_query">Query</string>
+    <string name="rule_query_hint">e.g. tag:tech sort:relevance</string>
+    <string name="rule_type_standard">Rule</string>
+    <string name="rule_type_mute">Mute</string>
+    <string name="rule_effects">Effects on new articles</string>
+    <string name="rule_effect_mark_read">Mark read</string>
+    <string name="rule_effect_star">Star</string>
+    <string name="rule_scope_all_feeds">All feeds</string>
+    <string name="rule_scope_pick">Pick feeds and groups</string>
+    <string name="rule_preview">Preview</string>
+    <plurals name="rule_preview_count">
+        <item quantity="one">%1$d article matches</item>
+        <item quantity="other">%1$d articles match</item>
+    </plurals>
+    <string name="rule_apply">Apply to existing articles</string>
+    <string name="rule_apply_confirm_title">Apply rule?</string>
+    <plurals name="rule_apply_confirm_message">
+        <item quantity="one">%1$d existing article will be changed. You can undo the last apply.</item>
+        <item quantity="other">%1$d existing articles will be changed. You can undo the last apply.</item>
+    </plurals>
+    <string name="rule_applied">Applied to %1$d articles</string>
+    <string name="rule_undo">Undo last apply</string>
+    <string name="rule_undo_none">Nothing to undo</string>
+    <string name="rule_undo_result">Restored %1$d · skipped %2$d (changed after apply)</string>
+    <string name="rule_mute_note">Mutes filter the unread and updated lists only. They never change articles.</string>
+    <string name="saved_search_save">Save search</string>
+    <string name="saved_search_name_hint">Saved search name</string>
+    <string name="saved_search_saved">Search saved</string>
+    <string name="saved_search_rename">Rename</string>
+    <string name="saved_search_delete_confirm">Delete saved search "%1$s"?</string>
+    <string name="search_grammar_help">Search grammar</string>
+    <string name="search_grammar_help_body">Words match article titles and text (all words must match). Use quotes for phrases: "bar baz". Filter by feed tag with tag:tech. Sort with sort:asc, sort:desc or sort:relevance. Matching is case-insensitive Unicode lowercase: no regex, no boolean operators; ß does not match ss.</string>
 </resources>

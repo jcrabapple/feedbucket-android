@@ -49,6 +49,9 @@ import me.ash.reader.ui.page.settings.color.reading.ReadingTitlePage
 import me.ash.reader.ui.page.settings.color.reading.ReadingVideoPage
 import me.ash.reader.ui.page.settings.interaction.InteractionPage
 import me.ash.reader.ui.page.settings.languages.LanguagesPage
+import me.ash.reader.ui.page.settings.rules.RuleEditPage
+import me.ash.reader.ui.page.settings.rules.RulesPage
+import me.ash.reader.ui.page.settings.rules.RulesViewModel
 import me.ash.reader.ui.page.settings.tips.LicenseListPage
 import me.ash.reader.ui.page.settings.tips.TipsAndSupportPage
 import me.ash.reader.ui.page.settings.troubleshooting.TroubleshootingPage
@@ -188,6 +191,23 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                     backStack.add(Route.Troubleshooting)
                                 },
                                 navigateToTipsAndSupport = { backStack.add(Route.TipsAndSupport) },
+                                navigateToRules = { backStack.add(Route.Rules) },
+                            )
+                        }
+                    Route.Rules ->
+                        NavEntry(key) {
+                            RulesPage(
+                                viewModel = hiltViewModel<RulesViewModel>(),
+                                onBack = onBack,
+                                onNavigateToEdit = { backStack.add(Route.RuleEdit(it)) },
+                            )
+                        }
+                    is Route.RuleEdit ->
+                        NavEntry(key) {
+                            RuleEditPage(
+                                ruleId = key.ruleId,
+                                viewModel = hiltViewModel<RulesViewModel>(),
+                                onBack = onBack,
                             )
                         }
                     Route.Accounts ->
