@@ -484,14 +484,16 @@ Implement S24a/S25a/S26 directly:
 
 ### 9.1 Stable dependencies and bounded opt-ins
 
-- `androidx.compose.material3:material3` **1.4.0 stable** via Compose BOM 2025.10.01. Do not substitute 1.5.0-rc01.
-- `material3-adaptive-navigation-suite` **1.4.0 stable** via BOM.
-- `androidx.compose.material3.adaptive:{adaptive,adaptive-layout,adaptive-navigation,adaptive-navigation3}` **1.3.0 stable explicit pins** per amended S37. Wave A must attach resolved dependency evidence; current source has alpha pins that are not accepted.
-- Existing Navigation3 1.0.0 and `NavDisplay` predictive transitions remain.
+- App compile classpath: `androidx.compose.material3:material3` **1.5.0-alpha07** via `compose-bom-alpha 2025.10.01` (the approved Expressive train; see SPEC S37 as amended by Gate B). Do not substitute 1.5.0-rc01 or 1.4.0 stable on the app classpath.
+- androidTest classpath: `androidx.compose.material3:material3` **1.4.0 stable** via `compose-bom-stable 2025.10.01`.
+- `material3-adaptive-navigation-suite` **1.4.0 stable** via BOM (androidTest/instrumented).
+- `androidx.compose.material3.adaptive:{adaptive,adaptive-layout,adaptive-navigation}` **1.3.0-alpha06** on the app classpath (resolved, approved). `adaptive-navigation3` is not wired into the build (catalog pin unused); existing Navigation3 1.0.0 / `NavDisplay` predictive transitions remain.
 - `ExperimentalMaterial3ExpressiveApi`: bounded to theme emphasized typography and `MotionScheme.standard()` call site as required by the resolved artifact.
 - `ExperimentalMaterial3Api`: bounded to TopAppBar, slot-based SearchBar/SearchBarState and ModalBottomSheet signatures that require it.
-- `ExperimentalMaterial3AdaptiveApi`: bounded to adaptive scaffold/directive/navigator call sites required by resolved 1.3.0 KDoc.
+- `ExperimentalMaterial3AdaptiveApi`: bounded to adaptive scaffold/directive/navigator call sites required by resolved 1.3.0-alpha06 KDoc.
 - `ExperimentalFoundationApi`: sticky headers only when enabled. `ExperimentalSharedTransitionApi`: remove with article shared-element transitions rather than carrying it into calm reader motion.
+
+**Compatibility risk (recorded, Gate B):** the app-classpath pins above are alpha-channel artifacts; they carry no stability guarantee and their API may change silently. Upgrading is allowed only when a stable train exposes the same API surface on the v1 toolchain (AGP 8.13 / compileSdk 36), per SPEC S37; final Wave H gate re-verifies these pins.
 
 **Verified 1.4.0 API correction:** local `material3-android-1.4.0` classes contain **zero public `androidx/compose/material3/ButtonGroup*` classes**. Do not implement the creative-direction prose as a nonexistent `ButtonGroup` or `ButtonGroupState` call. Current/Changes uses public `SingleChoiceSegmentedButtonRow` + two `SegmentedButton` children with 48dp minimum height and connected shapes. The hidden binary-compatibility overloads are not used. This is a bounded stable fallback to the guideline's deprecated component, forced by the stable API inventory; migrate to connected ButtonGroup only when the pinned stable release actually provides it.
 
@@ -529,9 +531,9 @@ Sources retrieved 2026-11-16:
 
 | Source | Screen/component | Actual API/version posture | Adaptation | Verification |
 |---|---|---|---|---|
-| M1 M2 M3 | Global theme | `MaterialTheme`, `ColorScheme`, `Typography`, `Shapes`, `MotionScheme.standard()`; material3 1.4.0 stable | Static petrol/ink first, optional dynamic, calm standard motion | Resolved deps; numeric static/dynamic-sample contrast; dark/light/RTL renders |
+| M1 M2 M3 | Global theme | `MaterialTheme`, `ColorScheme`, `Typography`, `Shapes`, `MotionScheme.standard()`; material3 1.5.0-alpha07 (app classpath) | Static petrol/ink first, optional dynamic, calm standard motion | Resolved deps; numeric static/dynamic-sample contrast; dark/light/RTL renders |
 | M1 M2 M4 | Root navigation | `NavigationSuiteScaffold`; navigation-suite 1.4.0 stable | Three roots; bar/rail; no dashboard | 320/390/768 targets, selection semantics, Back/root state |
-| M5 | Read list-detail | `NavigableListDetailPaneScaffold`, navigator, `AnimatedPane`; adaptive 1.3.0 stable target with bounded opt-in | Stable two-pane where content fits, one-pane at large font | Same article/anchors across 390/768, rotation, font 200%, predictive Back |
+| M5 | Read list-detail | `NavigableListDetailPaneScaffold`, navigator, `AnimatedPane`; adaptive 1.3.0-alpha06 with bounded opt-in | Stable two-pane where content fits, one-pane at large font | Same article/anchors across 390/768, rotation, font 200%, predictive Back |
 | M1 M2 | App bars | `TopAppBar`, `BottomAppBar`, 48dp `IconButton`/`IconToggleButton`; 1.4.0 | 64dp bars, no shrinking title or 40dp actions | Bounds, hit tests, inset occlusion, long context |
 | M1 M2 M7 | Article index | `LazyColumn`, `Surface`, `Text`, `HorizontalDivider`; stable | Flat Margin Notes rows, no cards/fill/alpha wash | Long title/feed/URL, mixed RTL, comfortable/compact, font 200% |
 | M2 M7 | Scopes/saved searches | `FilterChip`, `LazyRow`; 1.4.0 | 48dp chips, horizontal overflow, labels+selection | Grayscale selection, TalkBack order, 320dp hit tests |
