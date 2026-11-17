@@ -32,11 +32,13 @@ object SearchSql {
             .replace("%", "\\%")
             .replace("_", "\\_") + "%"
 
+    private fun qualify(alias: String?, column: String) = if (alias == null) column else "$alias.$column"
+
     /** One term AND-ed across the four normalized shadow columns. */
-    fun renderTerm(term: String): Rendered {
+    fun renderTerm(term: String, alias: String? = null): Rendered {
         val pattern = likeTerm(TextNormalizer.normalize(term))
         val clause = "(" + listOf("titleLower", "shortLower", "rawLower", "fullLower")
-            .joinToString(" OR ") { "$it $LIKE_PATTERN" } + ")"
+            .joinToString(" OR ") { "${qualify(alias, it)} $LIKE_PATTERN" } + ")"
         return Rendered(clause, listOf(pattern, pattern, pattern, pattern))
     }
 
@@ -54,12 +56,14 @@ object SearchSql {
 
     /**
      * `tag:` as CSV-safe containment over `feed.tags` (S11a). Both sides
-     * lowercase: tags are stored lowercased (S4).
+     * lowercase: tags are stored lowercased (S4). [articleAlias] qualifies
+     * the article table reference (required when the query aliases the
+     * article table, e.g. `article AS a`).
      */
-    fun renderTag(query: SearchQuery): Rendered {
+    fun renderTag(query: SearchQuery, articleAlias: String = "article"): Rendered {
         val tag = query.tag ?: return Rendered("", emptyList())
         return Rendered(
-            sql = "EXISTS (SELECT 1 FROM feed f2 WHERE f2.id = article.feedId " +
+            sql = "EXISTS (SELECT 1 FROM feed f2 WHERE f2.id = $articleAlias.feedId " +
                 "AND (',' || f2.tags || ',' LIKE '%,' || ? || ',%'))",
             params = listOf(TextNormalizer.normalize(tag)),
         )
@@ -80,14 +84,14 @@ object SearchSql {
      * S14 relevance score: per term, title=5 + short=2 + raw/full=1,
      * summed (port of db.py:632-642).
      */
-    fun renderRelevanceScore(query: SearchQuery): Rendered {
+    fun renderRelevanceScore(query: SearchQuery, alias: String? = null): Rendered {
         val parts = query.terms.map { term ->
             val pattern = likeTerm(TextNormalizer.normalize(term))
             Rendered(
-                "CASE WHEN titleLower $LIKE_PATTERN THEN 5 ELSE 0 END + " +
-                    "CASE WHEN shortLower $LIKE_PATTERN THEN 2 ELSE 0 END + " +
-                    "CASE WHEN rawLower $LIKE_PATTERN OR fullLower $LIKE_PATTERN " +
-                    "THEN 1 ELSE 0 END",
+                "CASE WHEN ${qualify(alias, "titleLower")} $LIKE_PATTERN THEN 5 ELSE 0 END + " +
+                    "CASE WHEN ${qualify(alias, "shortLower")} $LIKE_PATTERN THEN 2 ELSE 0 END + " +
+                    "CASE WHEN ${qualify(alias, "rawLower")} $LIKE_PATTERN OR " +
+                    "${qualify(alias, "fullLower")} $LIKE_PATTERN THEN 1 ELSE 0 END",
                 listOf(pattern, pattern, pattern, pattern),
             )
         }
