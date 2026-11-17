@@ -83,6 +83,9 @@ fun ReadingPage(
     val isPullToSwitchArticleEnabled = LocalPullToSwitchArticle.current.value
     val readingUiState = viewModel.readingUiState.collectAsStateValue()
     val readerState = viewModel.readerStateStateFlow.collectAsStateValue()
+    // S27a/S30a — download row for the open article (drives the TopBar
+    // action and the hardened offline render routing).
+    val currentDownload = viewModel.currentDownload.collectAsStateValue()
     val boldCharacters = LocalReadingBoldCharacters.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -109,6 +112,19 @@ fun ReadingPage(
 
     var bringToTop by remember { mutableStateOf(false) }
 
+    // S27a/S30a — a committed download routes this article through the
+    // hardened offline renderer. Startup reconciliation demotes rows whose
+    // committed dir fails manifest validation, so `ready` is authoritative.
+    val offlineTarget =
+        remember(readerState.articleId, currentDownload?.state) {
+            val article = readingUiState.articleWithFeed?.article
+            if (article != null && currentDownload?.state == me.ash.reader.domain.model.download.ArticleDownload.STATE_READY) {
+                me.ash.reader.ui.component.webview.OfflineArticleTarget(article.accountId, article.id)
+            } else {
+                null
+            }
+        }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         content = { paddings ->
@@ -123,6 +139,10 @@ fun ReadingPage(
                         navigationAction = navigationAction,
                         onNavButtonClick = onNavAction,
                         onNavigateToStylePage = onNavigateToStylePage,
+                        // S27a — per-article download action (manual = no
+                        // network constraint; fails fast to failed(network)).
+                        downloadState = currentDownload?.state,
+                        onDownloadClick = { viewModel.downloadCurrentArticle() },
                     )
                 }
 
@@ -395,6 +415,7 @@ fun ReadingPage(
                                                 },
                                             contentChangedAt =
                                                 readingUiState.articleWithFeed?.article?.contentChangedAt,
+                                            offlineTarget = offlineTarget,
                                             onImageClick = { imgUrl, altText ->
                                                 currentImageData = ImageData(imgUrl, altText)
                                                 showFullScreenImageViewer = true

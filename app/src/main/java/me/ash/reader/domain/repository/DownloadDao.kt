@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 import me.ash.reader.domain.model.download.ArticleDownload
 import me.ash.reader.domain.model.download.DownloadAsset
 
@@ -13,6 +14,9 @@ interface DownloadDao {
 
     @Query("SELECT * FROM article_download WHERE articleId = :articleId")
     suspend fun queryByArticleId(articleId: String): ArticleDownload?
+
+    @Query("SELECT * FROM article_download WHERE articleId = :articleId")
+    fun queryByArticleIdFlow(articleId: String): Flow<ArticleDownload?>
 
     @Query("SELECT * FROM article_download WHERE articleId IN (:articleIds)")
     suspend fun queryByArticleIds(articleIds: List<String>): List<ArticleDownload>

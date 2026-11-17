@@ -69,6 +69,11 @@ fun Content(
     // S21a — update provenance badge data; displayed above the diff
     // toggle. Never a sort key anywhere (D8).
     contentChangedAt: Date? = null,
+    // S27a/S30a — when the article has a committed download, the offline
+    // render goes through the HARDENED appassets path regardless of the
+    // user's renderer preference (R5: the online pipeline's JS bridge and
+    // raw HttpURLConnection fetches are structurally unreachable there).
+    offlineTarget: me.ash.reader.ui.component.webview.OfflineArticleTarget? = null,
 ) {
     val context = LocalContext.current
     val subheadUpperCase = LocalReadingSubheadUpperCase.current
@@ -114,8 +119,50 @@ fun Content(
         Column { LoadingIndicator(modifier = Modifier.size(56.dp)) }
     } else {
 
-        when (renderer) {
-            ReadingRendererPreference.WebView -> {
+        when {
+            // S30a — downloaded article: the hardened offline renderer
+            // replaces BOTH online renderers and issues ZERO network calls.
+            // The S22 diff path is untouched: "View changes" still swaps in
+            // the Compose DiffPane on the description path.
+            offlineTarget != null -> {
+                Column(
+                    modifier =
+                        modifier
+                            .padding(top = contentPadding.calculateTopPadding())
+                            .fillMaxSize()
+                            .drawVerticalScrollIndicator(scrollState)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().verticalScroll(scrollState),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Column(modifier = Modifier.then(maxWidthModifier)) {
+                            // Top bar height
+                            Spacer(modifier = Modifier.height(64.dp))
+                            // padding
+                            headline()
+
+                            if (showDiff && diff != null) {
+                                DiffPane(
+                                    diff = diff,
+                                    modifier = Modifier.padding(vertical = 12.dp),
+                                )
+                            } else {
+                                me.ash.reader.ui.component.webview.OfflineArticleWebView(
+                                    target = offlineTarget,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(128.dp))
+                            Spacer(
+                                modifier = Modifier.height(contentPadding.calculateBottomPadding())
+                            )
+                        }
+                    }
+                }
+            }
+
+            renderer == ReadingRendererPreference.WebView -> {
                 Column(
                     modifier =
                         modifier
@@ -155,7 +202,7 @@ fun Content(
                 }
             }
 
-            ReadingRendererPreference.NativeComponent -> {
+            else -> {
                 SelectionContainer {
                     LazyColumn(
                         modifier = modifier.fillMaxSize().drawVerticalScrollIndicator(listState),

@@ -13,6 +13,7 @@ import javax.inject.Inject
 import kotlin.collections.any
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -42,6 +46,9 @@ import me.ash.reader.domain.model.position.PositionScope
 import me.ash.reader.domain.model.position.PositionStore
 import me.ash.reader.domain.model.position.ReadingPosition
 import me.ash.reader.domain.model.position.RestoredPosition
+import me.ash.reader.domain.model.download.ArticleDownload
+import me.ash.reader.domain.repository.DownloadDao
+import me.ash.reader.domain.service.DownloadService
 import me.ash.reader.domain.service.GoogleReaderRssService
 import me.ash.reader.domain.service.LocalRssService
 import me.ash.reader.domain.service.RssService
@@ -75,6 +82,8 @@ constructor(
     private val articleListUseCase: ArticlePagingListUseCase,
     private val positionStore: PositionStore,
     private val savedSearchService: me.ash.reader.domain.service.SavedSearchService,
+    private val downloadDao: DownloadDao,
+    private val downloadService: DownloadService,
     workManager: WorkManager,
 ) : ViewModel() {
 
@@ -398,6 +407,31 @@ constructor(
 
     private val _readerState: MutableStateFlow<ReaderState> = MutableStateFlow(ReaderState())
     val readerStateStateFlow = _readerState.asStateFlow()
+
+    // --- S27a/S30a — downloads -------------------------------------------------
+
+    /** The download row for the currently open article (null = never requested). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentDownload: StateFlow<ArticleDownload?> =
+        readerStateStateFlow
+            .map { it.articleId }
+            .distinctUntilChanged()
+            .flatMapLatest { articleId ->
+                if (articleId == null) flowOf(null)
+                else downloadDao.queryByArticleIdFlow(articleId)
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Manual single-article download (NO network constraint — R6). */
+    fun downloadCurrentArticle() {
+        val articleId = readerStateStateFlow.value.articleId ?: return
+        applicationScope.launch(ioDispatcher) { downloadService.enqueueManual(articleId) }
+    }
+
+    fun removeCurrentArticleDownload() {
+        val articleId = readerStateStateFlow.value.articleId ?: return
+        applicationScope.launch(ioDispatcher) { downloadService.remove(articleId) }
+    }
 
     private val currentArticle: Article?
         get() = readingUiState.value.articleWithFeed?.article

@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuOpen
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Downloading
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.rounded.Close
@@ -62,6 +65,10 @@ fun TopBar(
     onClick: (() -> Unit)? = null,
     onNavButtonClick: (NavigationAction) -> Unit = {},
     onNavigateToStylePage: () -> Unit,
+    // S27a — download action state: null = not requested, else the
+    // ArticleDownload state string (pending/downloading/ready/failed).
+    downloadState: String? = null,
+    onDownloadClick: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val sharedContent = LocalSharedContent.current
@@ -137,6 +144,42 @@ fun TopBar(
                             tint = MaterialTheme.colorScheme.onSurface,
                         ) {
                             sharedContent.share(context, title, link)
+                        }
+                        // S27a — per-article download. States: not requested
+                        // (outline), in flight (downloading anim), ready
+                        // (done), failed (outline, tap retries).
+                        val downloadIcon =
+                            when (downloadState) {
+                                me.ash.reader.domain.model.download.ArticleDownload.STATE_READY ->
+                                    Icons.Filled.DownloadDone
+                                me.ash.reader.domain.model.download.ArticleDownload.STATE_PENDING,
+                                me.ash.reader.domain.model.download.ArticleDownload.STATE_DOWNLOADING ->
+                                    Icons.Outlined.Downloading
+                                else -> Icons.Outlined.Download
+                            }
+                        val downloadTint =
+                            when (downloadState) {
+                                me.ash.reader.domain.model.download.ArticleDownload.STATE_READY ->
+                                    MaterialTheme.colorScheme.primary
+                                me.ash.reader.domain.model.download.ArticleDownload.STATE_FAILED ->
+                                    MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.onSurface
+                            }
+                        val downloadDescription =
+                            when (downloadState) {
+                                me.ash.reader.domain.model.download.ArticleDownload.STATE_READY ->
+                                    R.string.download_article_done
+                                me.ash.reader.domain.model.download.ArticleDownload.STATE_FAILED ->
+                                    R.string.download_article_failed
+                                else -> R.string.download_article
+                            }
+                        FeedbackIconButton(
+                            modifier = Modifier.size(20.dp),
+                            imageVector = downloadIcon,
+                            contentDescription = stringResource(downloadDescription),
+                            tint = downloadTint,
+                        ) {
+                            onDownloadClick()
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
