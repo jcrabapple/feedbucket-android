@@ -3,6 +3,7 @@ package me.ash.reader.db
 import android.content.Context
 import androidx.paging.PagingSource
 import androidx.room.Room
+import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.Date
@@ -15,6 +16,8 @@ import me.ash.reader.domain.model.group.Group
 import me.ash.reader.domain.model.position.PositionScope
 import me.ash.reader.domain.model.position.PositionStore
 import me.ash.reader.domain.model.position.ScopeKey
+import me.ash.reader.domain.model.query.ScopeSql
+import me.ash.reader.domain.repository.ScopeRow
 import me.ash.reader.infrastructure.db.AndroidDatabase
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -60,6 +63,33 @@ class PositionPersistenceTest {
     @After
     fun tearDown() {
         db.close()
+    }
+
+    /**
+     * Wave D — the production scope path is the raw ScopeSql query; these
+     * helpers keep the Wave C assertions running against it unchanged.
+     */
+    private suspend fun scopeRows(
+        view: String = "unread",
+        feedId: String? = null,
+        groupId: String? = null,
+        sortAscending: Boolean = false,
+    ): List<ScopeRow> {
+        val built = ScopeSql.rows(1, view, feedId, groupId, sortAscending, null, emptyList())
+        return db.articleDao()
+            .queryScopeRowsRaw(SimpleSQLiteQuery(built.sql, built.args.toTypedArray()))
+    }
+
+    private suspend fun scopeNeighborPrev(pos: ScopeRow): String? {
+        val built = ScopeSql.prev(1, "unread", null, null, false, pos.sortKey, pos.rowId)
+        return db.articleDao()
+            .queryScopeNeighborPrevRaw(SimpleSQLiteQuery(built.sql, built.args.toTypedArray()))
+    }
+
+    private suspend fun scopeNeighborNext(pos: ScopeRow): String? {
+        val built = ScopeSql.next(1, "unread", null, null, false, pos.sortKey, pos.rowId)
+        return db.articleDao()
+            .queryScopeNeighborNextRaw(SimpleSQLiteQuery(built.sql, built.args.toTypedArray()))
     }
 
     private fun article(
@@ -196,7 +226,7 @@ class PositionPersistenceTest {
         db.articleDao().insert(
             article("a", 3000), article("b", 2000), article("c", 1000),
         )
-        val rows = db.articleDao().queryScopeRows(1, "unread", null, null, false)
+        val rows = scopeRows()
         assertEquals(listOf("1\$a", "1\$b", "1\$c"), rows.map { it.articleId })
     }
 
@@ -209,8 +239,7 @@ class PositionPersistenceTest {
             // Generation anchored at scope entry.
             val generation =
                 ListGeneration(
-                    db.articleDao()
-                        .queryScopeRows(1, "unread", null, null, false)
+                    scopeRows()
                         .map { NeighborRow(it.articleId, it.sortKey, it.rowId) },
                     rolledAt = 1L,
                 )
@@ -222,16 +251,14 @@ class PositionPersistenceTest {
             assertEquals(listOf("1\$a", "1\$b", "1\$c"), generation.ids)
             assertEquals(3, generation.size)
             // The re-queried SCOPE no longer contains B (that is the predicate)…
-            val requeried = db.articleDao().queryScopeRows(1, "unread", null, null, false)
+            val requeried = scopeRows()
             assertEquals(listOf("1\$a", "1\$c"), requeried.map { it.articleId })
             // …and the neighbor fallback keeps navigation working (prev=A, next=C).
             val pos = db.articleDao().querySortPosition("1\$b")!!
             val prev =
-                db.articleDao()
-                    .queryScopeNeighborPrev(1, "unread", null, null, false, pos.sortKey, pos.rowId)
+                scopeNeighborPrev(pos)
             val next =
-                db.articleDao()
-                    .queryScopeNeighborNext(1, "unread", null, null, false, pos.sortKey, pos.rowId)
+                scopeNeighborNext(pos)
             assertEquals("1\$a", prev)
             assertEquals("1\$c", next)
         }
@@ -241,8 +268,7 @@ class PositionPersistenceTest {
         db.articleDao().insert(article("a", 3000), article("b", 2000))
         val gen1 =
             ListGeneration(
-                db.articleDao()
-                    .queryScopeRows(1, "unread", null, null, false)
+                scopeRows()
                     .map { NeighborRow(it.articleId, it.sortKey, it.rowId) },
                 rolledAt = 1L,
             )
@@ -252,8 +278,7 @@ class PositionPersistenceTest {
         db.articleDao().insert(article("c", 4000))
         val gen2 =
             ListGeneration(
-                db.articleDao()
-                    .queryScopeRows(1, "unread", null, null, false)
+                scopeRows()
                     .map { NeighborRow(it.articleId, it.sortKey, it.rowId) },
                 rolledAt = 2L,
             )

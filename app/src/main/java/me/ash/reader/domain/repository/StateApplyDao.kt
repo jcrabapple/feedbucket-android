@@ -4,7 +4,10 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
+import me.ash.reader.domain.model.rule.ArticleApplyState
 import me.ash.reader.domain.model.rule.StateApplyBefore
+import me.ash.reader.domain.model.rule.StateApplyPlanner
 import me.ash.reader.domain.model.rule.StateApplyRun
 
 @Dao
@@ -50,4 +53,85 @@ interface StateApplyDao {
         """
     )
     suspend fun pruneToLastTenRuns()
+
+    /** S18a undo outcome reported to the UI ("Restored N · skipped M"). */
+    data class UndoCounts(val restored: Int, val skipped: Int)
+
+    /**
+     * S18a apply-to-existing, ONE transaction (R2): writes the ledger head
+     * + before rows, applies the effects via [writeEffect], prunes
+     * retention. [writeEffect] performs the per-article effect UPDATE(s)
+     * (mark_read/star with the stateVersion bump) and MUST be conditional
+     * on the expected post-apply version — the DAO implementation passes
+     * `stateVersion = state.stateVersion + 1` so a concurrent change turns
+     * the write into a no-op rather than clobbering it. NO star budget on
+     * apply-to-existing (web parity). Returns the exact affected count.
+     */
+    @Transaction
+    suspend fun applyRun(
+        matched: List<ArticleApplyState>,
+        ruleId: Long?,
+        markRead: Boolean,
+        star: Boolean,
+        now: Long,
+        insertRun: suspend (StateApplyRun) -> Long,
+        insertBeforeRows: suspend (List<StateApplyBefore>) -> Unit,
+        writeEffect: suspend (ArticleApplyState) -> Int,
+        prune: suspend () -> Unit,
+    ): Int {
+        if (matched.isEmpty()) return 0
+        val runId =
+            insertRun(
+                StateApplyRun(
+                    ruleId = ruleId,
+                    startedAt = now,
+                    finishedAt = now,
+                    appliedCount = matched.size,
+                )
+            )
+        insertBeforeRows(StateApplyPlanner.beforeRows(runId, matched))
+        if (markRead || star) {
+            matched.forEach { writeEffect(it) }
+        }
+        prune()
+        return matched.size
+    }
+
+    /**
+     * S18a undo of one run, ONE transaction: restores each ledgered
+     * article's before-state ONLY when its current `stateVersion` still
+     * equals `stateVersionAtApply` — [restore] is the conditional UPDATE
+     * (returns rows written; 0 = changed since apply → skipped+counted).
+     * `wasStarred=1` rows restore to starred: undo NEVER clears
+     * pre-existing stars. Returns null when the run is missing, unfinished
+     * or already undone (Undo is available only for the most recent
+     * completed, not-yet-undone run).
+     */
+    @Transaction
+    suspend fun undoRun(
+        runId: Long,
+        now: Long,
+        restore: suspend (StateApplyBefore) -> Int,
+    ): UndoCounts? {
+        val run = queryRun(runId) ?: return null
+        if (run.finishedAt == null || run.undoneAt != null) return null
+        var restored = 0
+        var skipped = 0
+        for (row in queryBeforeRows(runId)) {
+            val changed = restore(row)
+            if (changed > 0) restored += 1 else skipped += 1
+        }
+        markUndone(runId, now, restored, skipped)
+        return UndoCounts(restored = restored, skipped = skipped)
+    }
+
+    /** S18a — undo the most recent completed, not-yet-undone run, if any. */
+    @Transaction
+    suspend fun undoLatestRun(
+        now: Long,
+        restore: suspend (StateApplyBefore) -> Int,
+    ): UndoCounts? {
+        val run = queryLatestUndoableRun() ?: return null
+        return undoRun(run.id, now, restore)
+    }
 }

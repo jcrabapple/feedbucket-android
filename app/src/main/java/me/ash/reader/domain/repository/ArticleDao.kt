@@ -8,16 +8,21 @@ import androidx.room.Insert
 import androidx.room.MapColumn
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.RawQuery
 import androidx.room.RewriteQueriesToDropUnusedColumns
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.sqlite.db.SupportSQLiteQuery
+import java.util.Date
 import kotlinx.coroutines.flow.Flow
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleMeta
 import me.ash.reader.domain.model.article.ArticleWithFeed
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.feed.ImportantNum
-import java.util.Date
+import me.ash.reader.domain.model.rule.ActionRule
+import me.ash.reader.domain.model.rule.ArticleApplyState
+import me.ash.reader.domain.service.RuleEngine
 
 @Dao
 interface ArticleDao {
@@ -95,210 +100,6 @@ interface ArticleDao {
     ): Int
 
 
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND feedId IN (
-            SELECT id FROM feed WHERE groupId = :groupId
-        )
-        AND isUnread = :isUnread
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleByGroupIdWhenIsUnread(
-        accountId: Int,
-        text: String,
-        groupId: String,
-        isUnread: Boolean,
-        sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND feedId IN (
-            SELECT id FROM feed WHERE groupId = :groupId
-        )
-        AND isStarred = :isStarred
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleByGroupIdWhenIsStarred(
-        accountId: Int,
-        text: String,
-        groupId: String,
-        isStarred: Boolean,
-        sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND feedId IN (
-            SELECT id FROM feed WHERE groupId = :groupId
-        )
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleByGroupIdWhenAll(
-        accountId: Int, text: String, groupId: String, sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND feedId = :feedId
-        AND isUnread = :isUnread
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleByFeedIdWhenIsUnread(
-        accountId: Int,
-        text: String,
-        feedId: String,
-        isUnread: Boolean,
-        sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND feedId = :feedId
-        AND isStarred = :isStarred
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleByFeedIdWhenIsStarred(
-        accountId: Int,
-        text: String,
-        feedId: String,
-        isStarred: Boolean,
-        sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND feedId = :feedId 
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleByFeedIdWhenAll(
-        accountId: Int, text: String, feedId: String, sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND isUnread = :isUnread
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleWhenIsUnread(
-        accountId: Int, text: String, isUnread: Boolean, sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND isStarred = :isStarred
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleWhenIsStarred(
-        accountId: Int, text: String, isStarred: Boolean, sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM article
-        WHERE accountId = :accountId 
-        AND (
-            title LIKE '%' || :text || '%'
-            OR shortDescription LIKE '%' || :text || '%'
-            OR fullContent LIKE '%' || :text || '%'
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC
-        """
-    )
-    fun searchArticleWhenAll(
-        accountId: Int, text: String, sortAscending: Boolean = false
-    ): PagingSource<Int, ArticleWithFeed>
 
 
     @Query(
@@ -1182,38 +983,9 @@ interface ArticleDao {
      * `recentlyRead`, which orders by `readAt` (S15). Ordering: default
      * `date DESC, rowid DESC`; `sortAscending` flips both keys; recentlyRead is
      * always `readAt DESC, rowid DESC` (web parity: sort:asc does not affect the
-     * recently_read view). Search-scoped generations are Wave D (canonical
-     * grammar); Wave C rolls generations for the plain view/feed/group scopes.
+     * recently_read view). The production path is [queryScopeRowsRaw] (Wave D
+     * dynamic scope SQL over ScopeSql); the legacy static query is gone.
      */
-    @Query(
-        """
-        SELECT id, date AS sortKey, rowid AS rowId FROM article
-        WHERE accountId = :accountId
-        AND (:feedId IS NULL OR feedId = :feedId)
-        AND (:groupId IS NULL OR feedId IN (SELECT id FROM feed WHERE groupId = :groupId))
-        AND (
-            :view = 'all'
-            OR (:view = 'unread' AND isUnread = 1)
-            OR (:view = 'starred' AND isStarred = 1)
-            OR (:view = 'recentlyRead' AND readAt IS NOT NULL)
-        )
-        ORDER BY
-            CASE WHEN :view = 'recentlyRead' THEN readAt END DESC,
-            CASE WHEN :view = 'recentlyRead' THEN rowid END DESC,
-            CASE WHEN :view != 'recentlyRead' AND :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :view != 'recentlyRead' AND :sortAscending = 0 THEN date END DESC,
-            CASE WHEN :view != 'recentlyRead' AND :sortAscending = 1 THEN rowid END ASC,
-            CASE WHEN :view != 'recentlyRead' AND :sortAscending = 0 THEN rowid END DESC
-        """
-    )
-    suspend fun queryScopeRows(
-        accountId: Int,
-        view: String,
-        feedId: String?,
-        groupId: String?,
-        sortAscending: Boolean,
-    ): List<ScopeRow>
-
     /** S25a — the (sortKey, rowid) position of one article, for the neighbor fallback. */
     @Query(
         """
@@ -1222,79 +994,6 @@ interface ArticleDao {
         """
     )
     suspend fun querySortPosition(articleId: String): ScopeRow?
-
-    /**
-     * S25a — previous row in scope order when the current article has left the
-     * predicate (port of web db.py:678 row-value fallback). Default DESC order:
-     * the closest row with `(date, rowid) > (:sortKey, :rowId)`; ASC order: the
-     * closest row with `<`.
-     */
-    @Query(
-        """
-        SELECT id FROM article
-        WHERE accountId = :accountId
-        AND (:feedId IS NULL OR feedId = :feedId)
-        AND (:groupId IS NULL OR feedId IN (SELECT id FROM feed WHERE groupId = :groupId))
-        AND (
-            :view = 'all'
-            OR (:view = 'unread' AND isUnread = 1)
-            OR (:view = 'starred' AND isStarred = 1)
-        )
-        AND (
-            (:sortAscending = 0 AND (date, rowid) > (:sortKey, :rowId))
-            OR (:sortAscending = 1 AND (date, rowid) < (:sortKey, :rowId))
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END DESC,
-            CASE WHEN :sortAscending = 0 THEN date END ASC,
-            CASE WHEN :sortAscending = 1 THEN rowid END DESC,
-            CASE WHEN :sortAscending = 0 THEN rowid END ASC
-        LIMIT 1
-        """
-    )
-    suspend fun queryScopeNeighborPrev(
-        accountId: Int,
-        view: String,
-        feedId: String?,
-        groupId: String?,
-        sortAscending: Boolean,
-        sortKey: Long,
-        rowId: Long,
-    ): String?
-
-    /** S25a — next row in scope order; complement of [queryScopeNeighborPrev]. */
-    @Query(
-        """
-        SELECT id FROM article
-        WHERE accountId = :accountId
-        AND (:feedId IS NULL OR feedId = :feedId)
-        AND (:groupId IS NULL OR feedId IN (SELECT id FROM feed WHERE groupId = :groupId))
-        AND (
-            :view = 'all'
-            OR (:view = 'unread' AND isUnread = 1)
-            OR (:view = 'starred' AND isStarred = 1)
-        )
-        AND (
-            (:sortAscending = 0 AND (date, rowid) < (:sortKey, :rowId))
-            OR (:sortAscending = 1 AND (date, rowid) > (:sortKey, :rowId))
-        )
-        ORDER BY
-            CASE WHEN :sortAscending = 1 THEN date END ASC,
-            CASE WHEN :sortAscending = 0 THEN date END DESC,
-            CASE WHEN :sortAscending = 1 THEN rowid END ASC,
-            CASE WHEN :sortAscending = 0 THEN rowid END DESC
-        LIMIT 1
-        """
-    )
-    suspend fun queryScopeNeighborNext(
-        accountId: Int,
-        view: String,
-        feedId: String?,
-        groupId: String?,
-        sortAscending: Boolean,
-        sortKey: Long,
-        rowId: Long,
-    ): String?
 
     /**
      * S25a generation paging — loads one page of a generation by id list; the
@@ -1308,6 +1007,117 @@ interface ArticleDao {
         """
     )
     suspend fun queryArticleWithFeedByIds(ids: List<String>): List<ArticleWithFeed>
+
+    /**
+     * S15/S25a — raw scope snapshot over ScopeSql (Wave D): one code path
+     * for every view, adding canonical S10 query terms and mute NOT-clauses
+     * (unread/updated only) that static `@Query` cannot express. For empty
+     * query/mute inputs the builder reproduces the legacy static SQL.
+     */
+    @RawQuery(observedEntities = [Article::class, Feed::class])
+    suspend fun queryScopeRowsRaw(query: SupportSQLiteQuery): List<ScopeRow>
+
+    /** S25a — raw neighbor fallback (see [queryScopeRowsRaw]). */
+    @RawQuery(observedEntities = [Article::class, Feed::class])
+    suspend fun queryScopeNeighborPrevRaw(query: SupportSQLiteQuery): String?
+
+    /** S25a — raw neighbor fallback (see [queryScopeRowsRaw]). */
+    @RawQuery(observedEntities = [Article::class, Feed::class])
+    suspend fun queryScopeNeighborNextRaw(query: SupportSQLiteQuery): String?
+
+    /** S18a rule preview samples: `(articleId, title, feed name, date)`. */
+    @RawQuery(observedEntities = [Article::class, Feed::class])
+    suspend fun queryRuleMatchPreviewRaw(query: SupportSQLiteQuery): List<RulePreviewRow>
+
+    /** S18a rule preview total match count. */
+    @RawQuery(observedEntities = [Article::class])
+    suspend fun queryRuleMatchCountRaw(query: SupportSQLiteQuery): Int
+
+    /** S18a apply-to-existing: matched before-states for the ledger. */
+    @RawQuery(observedEntities = [Article::class])
+    suspend fun queryArticleApplyStatesRaw(query: SupportSQLiteQuery): List<ArticleApplyState>
+
+    /**
+     * S18a apply-to-existing effect writer: ONE conditional UPDATE per
+     * touched article (expected POST-apply version = state.stateVersion + 1
+     * recorded in the ledger) so concurrent changes no-op instead of
+     * clobbering; the row bumps stateVersion exactly once. `mark_read`
+     * clears isUnread+isUpdated and sets readAt; `star` sets isStarred.
+     */
+    @Query(
+        """
+        UPDATE article SET
+            isUnread = CASE WHEN :markRead THEN 0 ELSE isUnread END,
+            isUpdated = CASE WHEN :markRead THEN 0 ELSE isUpdated END,
+            readAt = CASE WHEN :markRead THEN :readAt ELSE readAt END,
+            isStarred = CASE WHEN :star THEN 1 ELSE isStarred END,
+            stateVersion = stateVersion + 1
+        WHERE id = :id AND stateVersion = :expectedVersion
+        """
+    )
+    suspend fun applyRuleEffectsById(
+        id: String,
+        markRead: Boolean,
+        star: Boolean,
+        readAt: Date,
+        expectedVersion: Long,
+    ): Int
+
+    /**
+     * S18a undo restore: writes the exact before-state ONLY when the
+     * current version still equals `stateVersionAtApply`; returns rows
+     * written (0 = changed since apply → skipped+counted). NEVER clears
+     * pre-existing stars (`wasStarred=1` restores to starred).
+     */
+    @Query(
+        """
+        UPDATE article SET isUnread = :isUnread, isStarred = :isStarred,
+            isUpdated = :isUpdated, readAt = :readAt, stateVersion = stateVersion + 1
+        WHERE id = :id AND stateVersion = :expectedVersion
+        """
+    )
+    suspend fun restoreStateByIdIfVersion(
+        id: String,
+        isUnread: Boolean,
+        isStarred: Boolean,
+        isUpdated: Boolean,
+        readAt: Date?,
+        expectedVersion: Long,
+    ): Int
+
+    /**
+     * S17a ingest application — the same transaction boundary as the plain
+     * identity insert, with STANDARD-rule effects applied to the fresh
+     * (newly inserted) articles before the INSERT (S17a/R1: mutes never
+     * apply here — callers may pass them; [RuleEngine] ignores them).
+     * [feedTags] is the feed's tags CSV split; [groupName] its group name;
+     * [rules] the S13-scope-resolved standard rules for this feed.
+     */
+    @Transaction
+    suspend fun insertListIfNotExistByIdentityWithRules(
+        articles: List<Article>,
+        feed: Feed,
+        feedTags: List<String>,
+        groupName: String?,
+        rules: List<ActionRule>,
+    ): List<Article> {
+        if (articles.isEmpty()) return articles
+        val existingArticles = queryByFeedIdGuidsOrLinks(
+            feedId = feed.id,
+            accountId = feed.accountId,
+            guids = articles.map { it.guid },
+            links = articles.map { it.link },
+        )
+        val fresh = articles.filterNot { incoming ->
+            existingArticles.any { existing ->
+                (incoming.guid.isNotEmpty() && existing.guid.isNotEmpty() && existing.guid == incoming.guid) ||
+                    (incoming.link.isNotEmpty() && existing.link.isNotEmpty() && existing.link == incoming.link)
+            }
+        }
+        val withEffects = RuleEngine.applyToNewArticles(fresh, feedTags, groupName, rules)
+        insertListIgnoreConflict(withEffects.articles)
+        return withEffects.articles
+    }
 }
 
 /** S25a — one ordered row of a scope snapshot (see [ArticleDao.queryScopeRows]). */
@@ -1315,4 +1125,12 @@ data class ScopeRow(
     @ColumnInfo(name = "id") val articleId: String,
     @ColumnInfo(name = "sortKey") val sortKey: Long,
     @ColumnInfo(name = "rowId") val rowId: Long,
+)
+
+/** S18a — one rule preview sample row `(articleId, title, feed name, date)`. */
+data class RulePreviewRow(
+    @ColumnInfo(name = "id") val articleId: String,
+    @ColumnInfo(name = "title") val title: String,
+    @ColumnInfo(name = "feedName") val feedName: String?,
+    @ColumnInfo(name = "date") val date: Date?,
 )

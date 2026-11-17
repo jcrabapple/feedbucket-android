@@ -2,6 +2,7 @@ package me.ash.reader.domain.service
 
 import android.util.Log
 import androidx.paging.PagingSource
+import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.work.ListenableWorker
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -20,10 +21,18 @@ import me.ash.reader.domain.model.article.Neighbors
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
 import me.ash.reader.domain.model.group.GroupWithFeed
+import me.ash.reader.domain.model.query.MuteFilters
+import me.ash.reader.domain.model.query.QueryMatcher
+import me.ash.reader.domain.model.query.ScopeSql
+import me.ash.reader.domain.model.query.SearchQuery
+import me.ash.reader.domain.model.rule.ActionRule
+import me.ash.reader.domain.model.rule.StateApplyRun
+import me.ash.reader.domain.repository.ActionRuleDao
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
 import me.ash.reader.domain.repository.ScopeRow
+import me.ash.reader.domain.repository.StateApplyDao
 import me.ash.reader.infrastructure.android.NotificationHelper
 import me.ash.reader.infrastructure.preference.KeepArchivedPreference
 import me.ash.reader.infrastructure.preference.SyncIntervalPreference
@@ -41,6 +50,8 @@ abstract class AbstractRssRepository(
     private val dispatcherIO: CoroutineDispatcher,
     private val dispatcherDefault: CoroutineDispatcher,
     private val accountService: AccountService,
+    private val actionRuleDao: ActionRuleDao,
+    private val stateApplyLedger: StateApplyLedger,
 ) {
 
     open val importSubscription: Boolean = true
@@ -168,14 +179,60 @@ abstract class AbstractRssRepository(
         feedId: String? = null,
         groupId: String? = null,
         sortAscending: Boolean = false,
-    ): List<ScopeRow> =
-        articleDao.queryScopeRows(
-            accountId = accountService.getCurrentAccountId(),
-            view = view,
-            feedId = feedId,
-            groupId = groupId,
-            sortAscending = sortAscending,
+        searchContent: String? = null,
+    ): List<ScopeRow> {
+        val accountId = accountService.getCurrentAccountId()
+        val search = parseSearch(searchContent, sortAscending)
+        val mutes = mutePairs(accountId, view)
+        val built = ScopeSql.rows(accountId, view, feedId, groupId, sortAscending, search, mutes)
+        return articleDao.queryScopeRowsRaw(SimpleSQLiteQuery(built.sql, built.args.toTypedArray()))
+    }
+
+    /**
+     * S15/S25a — query-mute pairs (mute + S13-resolved scope) for views
+     * mutes filter; empty for other views so non-muted scopes skip the
+     * mute load entirely ([ScopeSql] pins the same view matrix).
+     */
+    private suspend fun mutePairs(accountId: Int, view: String): List<Pair<ActionRule, Set<String>>> {
+        if (view != "unread" && view != "updated") return emptyList()
+        val mutes = actionRuleDao.queryByType(ActionRule.TYPE_MUTE)
+        if (mutes.isEmpty()) return emptyList()
+        val groups = groupDao.queryAll(accountId)
+        val scoped =
+            feedDao.queryAll(accountId).map {
+                QueryMatcher.ScopedFeed(id = it.id, groupId = it.groupId, tags = it.tags)
+            }
+        return mutes.mapNotNull { mute ->
+            val scope = resolveRuleScope(mute, scoped, groups)
+            MuteFilters.renderOne(mute, scope)?.let { mute to scope }
+        }
+    }
+
+    /** S13 — resolve a rule's scope against the account's feeds/groups. */
+    private suspend fun resolveRuleScope(
+        rule: ActionRule,
+        scopedFeeds: List<QueryMatcher.ScopedFeed>,
+        groups: List<Group>,
+    ): Set<String> =
+        QueryMatcher.resolveScope(
+            allFeeds = rule.allFeeds,
+            feedIds = csv(rule.feedIds),
+            groupIds = csv(rule.groupIds),
+            feeds = scopedFeeds,
+            groups = groups,
         )
+
+    private fun csv(value: String): List<String> = value.split(',').filter { it.isNotEmpty() }
+
+    private fun parseSearch(content: String?, sortAscending: Boolean): SearchQuery? =
+        content
+            ?.takeIf { it.isNotBlank() }
+            ?.let {
+                SearchQuery.parse(
+                    it,
+                    defaultSort = if (sortAscending) SearchQuery.Sort.ASC else SearchQuery.Sort.DESC,
+                )
+            }
 
     /** S25a — page loader for generation paging (chunked under the SQLite var limit). */
     suspend fun queryArticleWithFeedByIds(ids: List<String>): List<ArticleWithFeed> =
@@ -188,7 +245,7 @@ abstract class AbstractRssRepository(
     /**
      * S25a — SQL row-value neighbor fallback for an article that left the scope
      * predicate (port of db.py:678). Returns (prev, next) article ids, either
-     * edge null.
+     * edge null. [searchContent] keeps search generations consistent.
      */
     suspend fun queryScopeNeighbors(
         view: String,
@@ -196,20 +253,55 @@ abstract class AbstractRssRepository(
         groupId: String?,
         sortAscending: Boolean,
         articleId: String,
+        searchContent: String? = null,
     ): Neighbors {
         val accountId = accountService.getCurrentAccountId()
         val position = articleDao.querySortPosition(articleId) ?: return Neighbors(null, null)
-        val prev =
-            articleDao.queryScopeNeighborPrev(
-                accountId, view, feedId, groupId, sortAscending, position.sortKey, position.rowId,
-            )
-        val next =
-            articleDao.queryScopeNeighborNext(
-                accountId, view, feedId, groupId, sortAscending, position.sortKey, position.rowId,
-            )
+        val search = parseSearch(searchContent, sortAscending)
+        val mutes = mutePairs(accountId, view)
+        val prevBuilt =
+            ScopeSql.prev(accountId, view, feedId, groupId, sortAscending, position.sortKey, position.rowId, search, mutes)
+        val nextBuilt =
+            ScopeSql.next(accountId, view, feedId, groupId, sortAscending, position.sortKey, position.rowId, search, mutes)
+        val prev = articleDao.queryScopeNeighborPrevRaw(SimpleSQLiteQuery(prevBuilt.sql, prevBuilt.args.toTypedArray()))
+        val next = articleDao.queryScopeNeighborNextRaw(SimpleSQLiteQuery(nextBuilt.sql, nextBuilt.args.toTypedArray()))
         return Neighbors(previous = prev, next = next)
     }
 
+    // --- S18a rule preview / apply-to-existing / undo hooks -----------------
+
+    /** S13 scope feed ids for [rule] over the current account. */
+    suspend fun resolveRuleScope(rule: ActionRule): Set<String> {
+        val accountId = accountService.getCurrentAccountId()
+        val groups = groupDao.queryAll(accountId)
+        val scoped =
+            feedDao.queryAll(accountId).map {
+                QueryMatcher.ScopedFeed(id = it.id, groupId = it.groupId, tags = it.tags)
+            }
+        return resolveRuleScope(rule, scoped, groups)
+    }
+
+    /** S18a preview: total match count + first 20 samples. */
+    suspend fun previewRule(rule: ActionRule): StateApplyLedger.Preview {
+        val accountId = accountService.getCurrentAccountId()
+        val scope = resolveRuleScope(rule).toList()
+        return StateApplyLedger.Preview(
+            count = stateApplyLedger.previewCount(accountId, scope, rule.query),
+            samples = stateApplyLedger.previewSamples(accountId, scope, rule.query),
+        )
+    }
+
+    /** S18a apply-to-existing: one tx (ledger + effects) → exact count. */
+    suspend fun applyRuleToExisting(rule: ActionRule): Int {
+        val accountId = accountService.getCurrentAccountId()
+        return stateApplyLedger.applyToExisting(accountId, rule, resolveRuleScope(rule).toList())
+    }
+
+    /** S18a undo of the most recent completed, not-yet-undone apply run. */
+    suspend fun undoLatestApply(): StateApplyDao.UndoCounts? = stateApplyLedger.undoLatest()
+
+    /** S18a — the run Undo would target, for availability display. */
+    suspend fun latestUndoableRun(): StateApplyRun? = stateApplyLedger.latestUndoableRun()
     open suspend fun markAsStarred(articleId: String, isStarred: Boolean) {
         val accountId = accountService.getCurrentAccountId()
         articleDao.markAsStarredByArticleId(accountId, articleId, isStarred)
@@ -491,80 +583,6 @@ abstract class AbstractRssRepository(
             group.id,
             targetGroup.id,
         )
-    }
-
-    fun searchArticles(
-        content: String,
-        groupId: String?,
-        feedId: String?,
-        isStarred: Boolean,
-        isUnread: Boolean,
-        sortAscending: Boolean = false,
-    ): PagingSource<Int, ArticleWithFeed> {
-        val accountId = accountService.getCurrentAccountId()
-        Log.i(
-            "RLog",
-            "searchArticles: content: ${content}, accountId: ${accountId}, groupId: ${groupId}, feedId: ${feedId}, isStarred: ${isStarred}, isUnread: ${isUnread}",
-        )
-        return when {
-            groupId != null ->
-                when {
-                    isStarred ->
-                        articleDao.searchArticleByGroupIdWhenIsStarred(
-                            accountId,
-                            content,
-                            groupId,
-                            true,
-                        )
-
-                    isUnread ->
-                        articleDao.searchArticleByGroupIdWhenIsUnread(
-                            accountId,
-                            content,
-                            groupId,
-                            true,
-                            sortAscending,
-                        )
-
-                    else -> articleDao.searchArticleByGroupIdWhenAll(accountId, content, groupId)
-                }
-
-            feedId != null ->
-                when {
-                    isStarred ->
-                        articleDao.searchArticleByFeedIdWhenIsStarred(
-                            accountId,
-                            content,
-                            feedId,
-                            true,
-                        )
-
-                    isUnread ->
-                        articleDao.searchArticleByFeedIdWhenIsUnread(
-                            accountId,
-                            content,
-                            feedId,
-                            true,
-                            sortAscending,
-                        )
-
-                    else -> articleDao.searchArticleByFeedIdWhenAll(accountId, content, feedId)
-                }
-
-            else ->
-                when {
-                    isStarred -> articleDao.searchArticleWhenIsStarred(accountId, content, true)
-                    isUnread ->
-                        articleDao.searchArticleWhenIsUnread(
-                            accountId,
-                            content,
-                            true,
-                            sortAscending,
-                        )
-
-                    else -> articleDao.searchArticleWhenAll(accountId, content)
-                }
-        }
     }
 
     suspend fun queryUnreadFullContentArticles() =

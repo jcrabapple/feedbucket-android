@@ -74,6 +74,7 @@ constructor(
     private val imageDownloader: AndroidImageDownloader,
     private val articleListUseCase: ArticlePagingListUseCase,
     private val positionStore: PositionStore,
+    private val savedSearchService: me.ash.reader.domain.service.SavedSearchService,
     workManager: WorkManager,
 ) : ViewModel() {
 
@@ -359,6 +360,39 @@ constructor(
             filterStateUseCase.updateFilterState(searchContent = content)
     }
 
+    // --- S15 saved searches (verbatim-query persistence, view=all scope) ----
+
+    val savedSearches = savedSearchService.listFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun saveSearch(name: String, query: String) {
+        viewModelScope.launch(ioDispatcher) {
+            savedSearchService.create(name = name, query = query)
+        }
+    }
+
+    fun renameSearch(id: Long, name: String) {
+        viewModelScope.launch(ioDispatcher) {
+            savedSearchService.rename(id, name)
+        }
+    }
+
+    fun deleteSearch(id: Long) {
+        viewModelScope.launch(ioDispatcher) {
+            savedSearchService.delete(id)
+        }
+    }
+
+    /** S15 — execute a saved search: view=all plus the verbatim query. */
+    fun applySavedSearch(query: String) {
+        filterStateUseCase.updateFilterState(
+            feed = null,
+            group = null,
+            filter = me.ash.reader.domain.model.general.Filter.All,
+            searchContent = query,
+        )
+    }
+
     private val _readingUiState = MutableStateFlow(ReadingUiState())
     val readingUiState: StateFlow<ReadingUiState> = _readingUiState.asStateFlow()
 
@@ -508,8 +542,8 @@ constructor(
      * generation is active, neighbors come from the generation rows (membership
      * or in-generation position fallback); when the current article is outside
      * the generation entirely, the SQL row-value fallback (port of db.py:678)
-     * resolves by sort position. Legacy search scopes keep the loaded-snapshot
-     * walk (canonical search generations arrive in Wave D).
+     * resolves by sort position. Search scopes carry the parsed query into
+     * the fallback (Wave D canonical generations).
      */
     suspend fun ReaderState.prefetchArticleId(): ReaderState {
         val currentId = currentArticle?.id ?: return copy(listIndex = null)
@@ -530,6 +564,7 @@ constructor(
                             groupId = filterState.group?.id,
                             sortAscending = sortAscending,
                             articleId = currentId,
+                            searchContent = filterState.searchContent,
                         )
                 }
             val index = generation.indexOf(currentId)

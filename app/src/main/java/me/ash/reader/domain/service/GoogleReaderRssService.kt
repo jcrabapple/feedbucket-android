@@ -34,6 +34,7 @@ import me.ash.reader.domain.model.account.security.GoogleReaderSecurityKey
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
+import me.ash.reader.domain.repository.ActionRuleDao
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
@@ -77,6 +78,8 @@ constructor(
     private val workManager: WorkManager,
     private val accountService: AccountService,
     private val syncLogger: SyncLogger,
+    actionRuleDao: ActionRuleDao,
+    stateApplyLedger: StateApplyLedger,
 ) :
     AbstractRssRepository(
         articleDao,
@@ -88,6 +91,8 @@ constructor(
         ioDispatcher,
         defaultDispatcher,
         accountService,
+        actionRuleDao,
+        stateApplyLedger,
     ) {
 
     override val importSubscription: Boolean = false

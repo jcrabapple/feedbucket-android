@@ -21,6 +21,7 @@ import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleMeta
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
+import me.ash.reader.domain.repository.ActionRuleDao
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
@@ -52,6 +53,8 @@ constructor(
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
     workManager: WorkManager,
     private val accountService: AccountService,
+    actionRuleDao: ActionRuleDao,
+    stateApplyLedger: StateApplyLedger,
 ) :
     AbstractRssRepository(
         articleDao,
@@ -63,6 +66,8 @@ constructor(
         ioDispatcher,
         defaultDispatcher,
         accountService,
+        actionRuleDao,
+        stateApplyLedger,
     ) {
 
     override val importSubscription: Boolean = false

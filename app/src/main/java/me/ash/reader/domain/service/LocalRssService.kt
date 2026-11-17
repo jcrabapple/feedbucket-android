@@ -17,6 +17,9 @@ import me.ash.reader.domain.data.SyncLogger
 import me.ash.reader.domain.model.account.AccountType
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.feed.FeedWithArticle
+import me.ash.reader.domain.model.query.QueryMatcher
+import me.ash.reader.domain.model.rule.ActionRule
+import me.ash.reader.domain.repository.ActionRuleDao
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
@@ -37,6 +40,8 @@ constructor(
     private val rssHelper: RssHelper,
     private val notificationHelper: NotificationHelper,
     private val groupDao: GroupDao,
+    private val actionRuleDao: ActionRuleDao,
+    private val stateApplyLedger: StateApplyLedger,
     @IODispatcher private val ioDispatcher: CoroutineDispatcher,
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
     private val workManager: WorkManager,
@@ -53,6 +58,8 @@ constructor(
         ioDispatcher,
         defaultDispatcher,
         accountService,
+        actionRuleDao,
+        stateApplyLedger,
     ) {
 
     override suspend fun sync(
@@ -76,6 +83,16 @@ constructor(
                     else -> feedDao.queryAll(accountId)
                 }
 
+            // S17a — load the standard rules once per sync run; scope is
+            // resolved per feed below. Mute-type rules NEVER apply at
+            // ingest (R1): they are pure query-time filters (S15).
+            val standardRules = actionRuleDao.queryByType(ActionRule.TYPE_STANDARD)
+            val accountGroups = groupDao.queryAll(accountId)
+            val scopedFeeds =
+                feedDao.queryAll(accountId).map {
+                    QueryMatcher.ScopedFeed(id = it.id, groupId = it.groupId, tags = it.tags)
+                }
+
             feedsToSync
                 .mapIndexed { _, currentFeed ->
                     async(Dispatchers.IO) {
@@ -92,10 +109,38 @@ constructor(
                                 }
 
                             val newArticles =
-                                articleDao.insertListIfNotExistByIdentity(
-                                    articles = fetchedArticles,
-                                    feed = currentFeed,
-                                )
+                                if (standardRules.isEmpty()) {
+                                    articleDao.insertListIfNotExistByIdentity(
+                                        articles = fetchedArticles,
+                                        feed = currentFeed,
+                                    )
+                                } else {
+                                    // S13 scope resolution against this
+                                    // account's feeds/groups; effects are
+                                    // applied INSIDE the per-feed insert
+                                    // transaction (same tx boundary as web
+                                    // store_entries).
+                                    val applicable =
+                                        standardRules.filter { rule ->
+                                            currentFeed.id in
+                                                QueryMatcher.resolveScope(
+                                                    allFeeds = rule.allFeeds,
+                                                    feedIds = rule.feedIds.split(',').filter { it.isNotEmpty() },
+                                                    groupIds = rule.groupIds.split(',').filter { it.isNotEmpty() },
+                                                    feeds = scopedFeeds,
+                                                    groups = accountGroups,
+                                                )
+                                        }
+                                    val groupName =
+                                        accountGroups.firstOrNull { it.id == currentFeed.groupId }?.name
+                                    articleDao.insertListIfNotExistByIdentityWithRules(
+                                        articles = fetchedArticles,
+                                        feed = currentFeed,
+                                        feedTags = currentFeed.tags.split(',').filter { it.isNotEmpty() },
+                                        groupName = groupName,
+                                        rules = applicable,
+                                    )
+                                }
                             if (currentFeed.isNotification && newArticles.isNotEmpty()) {
                                 notificationHelper.notify(
                                     fetchedFeed.copy(articles = newArticles, feed = currentFeed)
