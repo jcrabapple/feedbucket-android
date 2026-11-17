@@ -133,6 +133,28 @@ class DiffTokenizerTest {
         "<p>t</p>\nnext  line" to listOf("<p>", "t</p>", "\n", "next", "  ", "line"),
     )
 
+    /**
+     * Python `\s` includes U+001C–U+001F (Python `str.isspace()`); Java's
+     * whitespace class does NOT, even with UNICODE_CHARACTER_CLASS — the
+     * shipped regex must add them explicitly. Recorded Python ground truth
+     * in build/recon/e4-plaintext-fixtures.json ("tokens"), generated
+     * read-only via the web venv (D14).
+     */
+    private val pythonWhitespaceFixtures: Map<String, List<String>> = linkedMapOf(
+        "a\u001Cb" to listOf("a", "\u001C", "b"),
+        "a\u001Db" to listOf("a", "\u001D", "b"),
+        "a\u001Eb" to listOf("a", "\u001E", "b"),
+        "a\u001Fb" to listOf("a", "\u001F", "b"),
+        "a\u001Cb c\u001Fd" to listOf("a", "\u001C", "b", " ", "c", "\u001F", "d"),
+    )
+
+    @Test
+    fun tokenRegexParityPythonWhitespaceSeparators() {
+        for ((input, expected) in pythonWhitespaceFixtures) {
+            assertEquals("tokenize(Python whitespace probe)", expected, ContentDiffer.tokenize(input))
+        }
+    }
+
     @Test
     fun tokenRegexParityRaw() {
         for ((input, expected) in rawFixtures) {

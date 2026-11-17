@@ -41,17 +41,20 @@ object ContentDiffer {
      * Web `_TOKEN` parity (feedbucket/diff.py:8). Compiled through
      * `java.util.regex.Pattern` because Kotlin's [RegexOption] has no
      * UNICODE_CHARACTER_CLASS: the flag keeps `\s` semantics identical to
-     * Python 3 str patterns, and `\u00A0` is added explicitly because
-     * Java's Unicode whitespace class omits NBSP while Python's `str.isspace`
-     * includes it — pinned by the `nbsp_raw`/`em_space` fixtures.
+     * Python 3 str patterns. Two explicit additions pin Python `str.isspace`
+     * characters Java's Unicode whitespace class omits: `\u00A0` (NBSP)
+     * and `\u001C-\u001F` (information separators) — all pinned by
+     * recorded fixtures (`nbsp_raw`/`em_space`, `tokenRegexParityPythonWhitespaceSeparators`).
      */
     val TOKEN_REGEX: Regex =
-        Pattern.compile("<[^>]+>|[^\\s\\u00A0]+|[\\s\\u00A0]+", Pattern.UNICODE_CHARACTER_CLASS)
-            .toRegex()
+        Pattern.compile(
+            "<[^>]+>|[^\\s\\u00A0\\u001C-\\u001F]+|[\\s\\u00A0\\u001C-\\u001F]+",
+            Pattern.UNICODE_CHARACTER_CLASS,
+        ).toRegex()
 
     enum class SegmentKind { EQUAL, DELETE, INSERT }
 
-    /** One renderable run of the diff. */
+    /** One renderable run of the diff; [text] is readable display text. */
     data class Segment(val kind: SegmentKind, val text: String)
 
     /** The computed diff: ordered runs over the sanitized token streams. */
