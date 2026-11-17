@@ -107,3 +107,4 @@ docs/research/logs/
 .plan/
 *.db
 build/recon/
+__pycache__/
