@@ -1,6 +1,7 @@
 # FeedBucket Android native UI contract v1
 
-Status: BUILDABLE DESIGN CONTRACT for Gate A and Wave H
+Status: APPROVED VISUAL BASELINE for Gate A and Wave H
+User approval: Jason reviewed the delivered mock-up and said "The mock-up looks good" on 2026-11-16. Implement the Margin Notes layout, typography, restrained palette and Material component direction shown in `mocks/index.html`; do not reopen the overall visual direction during implementation. Google Sans remains the current default and Serif remains opt-in. Native accessibility/runtime fixes may refine geometry where needed, with deviations recorded for review. This approval covers design, not unimplemented functionality or device-install consent.
 Date: 2026-11-16
 Authority: `docs/APPROVED-DIRECTION.md` D1–D17 > amended `docs/SPEC-v1.md` v1.1 > `docs/plans/IMPLEMENTATION-v1.md` > this contract.
 Direction: **Margin Notes**, with **Reading Desk** adaptive continuity from `docs/creative/DIRECTION-v1.md`.
