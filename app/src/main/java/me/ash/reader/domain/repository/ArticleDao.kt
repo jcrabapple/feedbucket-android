@@ -1,6 +1,7 @@
 package me.ash.reader.domain.repository
 
 import androidx.paging.PagingSource
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
@@ -34,9 +35,18 @@ interface ArticleDao {
         isStarred: Boolean,
     ): Int
 
+    /**
+     * S21a/S23 batch read-state write with the same single-transaction semantics
+     * as [markAsReadByArticleId]: read sets readAt + clears isUpdated, unread
+     * clears readAt; stateVersion bumps on every touched row.
+     */
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
+        UPDATE article SET
+            isUnread = :isUnread,
+            readAt = CASE WHEN :isUnread = 1 THEN NULL ELSE :readAt END,
+            isUpdated = CASE WHEN :isUnread = 1 THEN isUpdated ELSE 0 END,
+            stateVersion = stateVersion + 1
         WHERE accountId = :accountId
         AND id in (:ids)
         """
@@ -45,6 +55,7 @@ interface ArticleDao {
         accountId: Int,
         ids: Set<String>,
         isUnread: Boolean,
+        readAt: Date? = if (isUnread) null else Date(),
     ): Int
 
     @Transaction
@@ -318,10 +329,19 @@ interface ArticleDao {
         before: Date,
     ): List<Article>
 
+    /**
+     * S21a/S23 scoped mark-all-read (whole account): sets readAt, clears isUpdated,
+     * bumps stateVersion on every flipped row; returns the exact affected count
+     * (S25a confirmation parity with web mark_all_read).
+     */
     @Transaction
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
+        UPDATE article SET
+            isUnread = :isUnread,
+            readAt = CASE WHEN :isUnread = 1 THEN NULL ELSE :readAt END,
+            isUpdated = CASE WHEN :isUnread = 1 THEN isUpdated ELSE 0 END,
+            stateVersion = stateVersion + 1
         WHERE accountId = :accountId
         AND date < :before
         AND isUnread != :isUnread
@@ -331,14 +351,23 @@ interface ArticleDao {
         accountId: Int,
         isUnread: Boolean,
         before: Date,
-    )
+        readAt: Date? = if (isUnread) null else Date(),
+    ): Int
 
+    /**
+     * S21a/S23 scoped mark-all-read (group). Same write semantics and count
+     * contract as [markAllAsRead].
+     */
     @Transaction
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
+        UPDATE article SET
+            isUnread = :isUnread,
+            readAt = CASE WHEN :isUnread = 1 THEN NULL ELSE :readAt END,
+            isUpdated = CASE WHEN :isUnread = 1 THEN isUpdated ELSE 0 END,
+            stateVersion = stateVersion + 1
         WHERE feedId IN (
-            SELECT id FROM feed 
+            SELECT id FROM feed
             WHERE groupId = :groupId
         )
         AND accountId = :accountId
@@ -351,12 +380,21 @@ interface ArticleDao {
         groupId: String,
         isUnread: Boolean,
         before: Date,
-    )
+        readAt: Date? = if (isUnread) null else Date(),
+    ): Int
 
+    /**
+     * S21a/S23 scoped mark-all-read (feed). Same write semantics and count
+     * contract as [markAllAsRead].
+     */
     @Transaction
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
+        UPDATE article SET
+            isUnread = :isUnread,
+            readAt = CASE WHEN :isUnread = 1 THEN NULL ELSE :readAt END,
+            isUpdated = CASE WHEN :isUnread = 1 THEN isUpdated ELSE 0 END,
+            stateVersion = stateVersion + 1
         WHERE feedId = :feedId
         AND accountId = :accountId
         AND isUnread != :isUnread
@@ -368,12 +406,21 @@ interface ArticleDao {
         feedId: String,
         isUnread: Boolean,
         before: Date,
-    )
+        readAt: Date? = if (isUnread) null else Date(),
+    ): Int
 
-    @Transaction
+    /**
+     * S21a/S23 single-article read-state write, one transaction: mark-read sets
+     * isUnread=0, readAt=now, isUpdated=0 and bumps stateVersion; mark-unread sets
+     * isUnread=1 and clears readAt (web set_read parity), bumping stateVersion.
+     */
     @Query(
         """
-        UPDATE article SET isUnread = :isUnread, stateVersion = stateVersion + 1
+        UPDATE article SET
+            isUnread = :isUnread,
+            readAt = CASE WHEN :isUnread = 1 THEN NULL ELSE :readAt END,
+            isUpdated = CASE WHEN :isUnread = 1 THEN isUpdated ELSE 0 END,
+            stateVersion = stateVersion + 1
         WHERE id = :articleId
         AND accountId = :accountId
         """
@@ -382,7 +429,8 @@ interface ArticleDao {
         accountId: Int,
         articleId: String,
         isUnread: Boolean,
-    )
+        readAt: Date? = if (isUnread) null else Date(),
+    ): Int
 
     @Query(
         """
@@ -1055,4 +1103,216 @@ interface ArticleDao {
         """
     )
     suspend fun queryArticlesByTag(accountId: Int, tag: String): List<Article>
+
+    /**
+     * S15 — recentlyRead view: `readAt IS NOT NULL` ordered `readAt DESC, rowid
+     * DESC`; mutes NOT applied (exact web matrix). Scoped variants below follow
+     * the same ordering.
+     */
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM article
+        WHERE accountId = :accountId
+        AND readAt IS NOT NULL
+        ORDER BY readAt DESC, rowid DESC
+        """
+    )
+    fun queryArticleWithFeedWhenIsRecentlyRead(
+        accountId: Int,
+    ): PagingSource<Int, ArticleWithFeed>
+
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM article
+        WHERE accountId = :accountId
+        AND feedId = :feedId
+        AND readAt IS NOT NULL
+        ORDER BY readAt DESC, rowid DESC
+        """
+    )
+    fun queryArticleWithFeedByFeedIdWhenIsRecentlyRead(
+        accountId: Int,
+        feedId: String,
+    ): PagingSource<Int, ArticleWithFeed>
+
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM article AS a
+        LEFT JOIN feed AS b ON b.id = a.feedId
+        LEFT JOIN `group` AS c ON c.id = b.groupId
+        WHERE c.id = :groupId
+        AND a.accountId = :accountId
+        AND a.readAt IS NOT NULL
+        ORDER BY a.readAt DESC, a.rowid DESC
+        """
+    )
+    fun queryArticleWithFeedByGroupIdWhenIsRecentlyRead(
+        accountId: Int,
+        groupId: String,
+    ): PagingSource<Int, ArticleWithFeed>
+
+    /**
+     * S25a — exact unread count for the scoped mark-all-read confirmation
+     * (web mark_all_read parity: the dialog reports the count before applying).
+     * [feedId]/[groupId] are nullable; null means unscoped at that dimension.
+     */
+    @Query(
+        """
+        SELECT count(1) FROM article
+        WHERE accountId = :accountId
+        AND isUnread = 1
+        AND date < :before
+        AND (:feedId IS NULL OR feedId = :feedId)
+        AND (:groupId IS NULL OR feedId IN (SELECT id FROM feed WHERE groupId = :groupId))
+        """
+    )
+    suspend fun countUnreadInScope(
+        accountId: Int,
+        feedId: String?,
+        groupId: String?,
+        before: Date,
+    ): Int
+
+    /**
+     * S25a — list GENERATION snapshot: the ordered (id, sortKey, rowid) rows of a
+     * scope at generation roll. `sortKey` is `date` for every view except
+     * `recentlyRead`, which orders by `readAt` (S15). Ordering: default
+     * `date DESC, rowid DESC`; `sortAscending` flips both keys; recentlyRead is
+     * always `readAt DESC, rowid DESC` (web parity: sort:asc does not affect the
+     * recently_read view). Search-scoped generations are Wave D (canonical
+     * grammar); Wave C rolls generations for the plain view/feed/group scopes.
+     */
+    @Query(
+        """
+        SELECT id, date AS sortKey, rowid AS rowId FROM article
+        WHERE accountId = :accountId
+        AND (:feedId IS NULL OR feedId = :feedId)
+        AND (:groupId IS NULL OR feedId IN (SELECT id FROM feed WHERE groupId = :groupId))
+        AND (
+            :view = 'all'
+            OR (:view = 'unread' AND isUnread = 1)
+            OR (:view = 'starred' AND isStarred = 1)
+            OR (:view = 'recentlyRead' AND readAt IS NOT NULL)
+        )
+        ORDER BY
+            CASE WHEN :view = 'recentlyRead' THEN readAt END DESC,
+            CASE WHEN :view = 'recentlyRead' THEN rowid END DESC,
+            CASE WHEN :view != 'recentlyRead' AND :sortAscending = 1 THEN date END ASC,
+            CASE WHEN :view != 'recentlyRead' AND :sortAscending = 0 THEN date END DESC,
+            CASE WHEN :view != 'recentlyRead' AND :sortAscending = 1 THEN rowid END ASC,
+            CASE WHEN :view != 'recentlyRead' AND :sortAscending = 0 THEN rowid END DESC
+        """
+    )
+    suspend fun queryScopeRows(
+        accountId: Int,
+        view: String,
+        feedId: String?,
+        groupId: String?,
+        sortAscending: Boolean,
+    ): List<ScopeRow>
+
+    /** S25a — the (sortKey, rowid) position of one article, for the neighbor fallback. */
+    @Query(
+        """
+        SELECT id, date AS sortKey, rowid AS rowId FROM article
+        WHERE id = :articleId
+        """
+    )
+    suspend fun querySortPosition(articleId: String): ScopeRow?
+
+    /**
+     * S25a — previous row in scope order when the current article has left the
+     * predicate (port of web db.py:678 row-value fallback). Default DESC order:
+     * the closest row with `(date, rowid) > (:sortKey, :rowId)`; ASC order: the
+     * closest row with `<`.
+     */
+    @Query(
+        """
+        SELECT id FROM article
+        WHERE accountId = :accountId
+        AND (:feedId IS NULL OR feedId = :feedId)
+        AND (:groupId IS NULL OR feedId IN (SELECT id FROM feed WHERE groupId = :groupId))
+        AND (
+            :view = 'all'
+            OR (:view = 'unread' AND isUnread = 1)
+            OR (:view = 'starred' AND isStarred = 1)
+        )
+        AND (
+            (:sortAscending = 0 AND (date, rowid) > (:sortKey, :rowId))
+            OR (:sortAscending = 1 AND (date, rowid) < (:sortKey, :rowId))
+        )
+        ORDER BY
+            CASE WHEN :sortAscending = 1 THEN date END DESC,
+            CASE WHEN :sortAscending = 0 THEN date END ASC,
+            CASE WHEN :sortAscending = 1 THEN rowid END DESC,
+            CASE WHEN :sortAscending = 0 THEN rowid END ASC
+        LIMIT 1
+        """
+    )
+    suspend fun queryScopeNeighborPrev(
+        accountId: Int,
+        view: String,
+        feedId: String?,
+        groupId: String?,
+        sortAscending: Boolean,
+        sortKey: Long,
+        rowId: Long,
+    ): String?
+
+    /** S25a — next row in scope order; complement of [queryScopeNeighborPrev]. */
+    @Query(
+        """
+        SELECT id FROM article
+        WHERE accountId = :accountId
+        AND (:feedId IS NULL OR feedId = :feedId)
+        AND (:groupId IS NULL OR feedId IN (SELECT id FROM feed WHERE groupId = :groupId))
+        AND (
+            :view = 'all'
+            OR (:view = 'unread' AND isUnread = 1)
+            OR (:view = 'starred' AND isStarred = 1)
+        )
+        AND (
+            (:sortAscending = 0 AND (date, rowid) < (:sortKey, :rowId))
+            OR (:sortAscending = 1 AND (date, rowid) > (:sortKey, :rowId))
+        )
+        ORDER BY
+            CASE WHEN :sortAscending = 1 THEN date END ASC,
+            CASE WHEN :sortAscending = 0 THEN date END DESC,
+            CASE WHEN :sortAscending = 1 THEN rowid END ASC,
+            CASE WHEN :sortAscending = 0 THEN rowid END DESC
+        LIMIT 1
+        """
+    )
+    suspend fun queryScopeNeighborNext(
+        accountId: Int,
+        view: String,
+        feedId: String?,
+        groupId: String?,
+        sortAscending: Boolean,
+        sortKey: Long,
+        rowId: Long,
+    ): String?
+
+    /**
+     * S25a generation paging — loads one page of a generation by id list; the
+     * caller restores generation order (DAO row order is undefined for IN).
+     */
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM article
+        WHERE id IN (:ids)
+        """
+    )
+    suspend fun queryArticleWithFeedByIds(ids: List<String>): List<ArticleWithFeed>
 }
+
+/** S25a — one ordered row of a scope snapshot (see [ArticleDao.queryScopeRows]). */
+data class ScopeRow(
+    @ColumnInfo(name = "id") val articleId: String,
+    @ColumnInfo(name = "sortKey") val sortKey: Long,
+    @ColumnInfo(name = "rowId") val rowId: Long,
+)

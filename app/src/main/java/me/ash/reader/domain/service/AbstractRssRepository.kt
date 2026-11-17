@@ -16,12 +16,14 @@ import me.ash.reader.domain.model.account.Account
 import me.ash.reader.domain.model.article.ArchivedArticle
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleWithFeed
+import me.ash.reader.domain.model.article.Neighbors
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
 import me.ash.reader.domain.model.group.GroupWithFeed
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
+import me.ash.reader.domain.repository.ScopeRow
 import me.ash.reader.infrastructure.android.NotificationHelper
 import me.ash.reader.infrastructure.preference.KeepArchivedPreference
 import me.ash.reader.infrastructure.preference.SyncIntervalPreference
@@ -144,6 +146,70 @@ abstract class AbstractRssRepository(
         return emptySet()
     }
 
+    /**
+     * S25a — exact unread count in the current list scope (view/feed/group +
+     * date bound) for the mark-all-read confirmation dialog.
+     */
+    suspend fun countUnreadInScope(
+        feedId: String? = null,
+        groupId: String? = null,
+        before: Date = Date(Long.MAX_VALUE),
+    ): Int =
+        articleDao.countUnreadInScope(
+            accountId = accountService.getCurrentAccountId(),
+            feedId = feedId,
+            groupId = groupId,
+            before = before,
+        )
+
+    /** S25a — ordered scope snapshot rows for the current list generation. */
+    suspend fun queryScopeRows(
+        view: String,
+        feedId: String? = null,
+        groupId: String? = null,
+        sortAscending: Boolean = false,
+    ): List<ScopeRow> =
+        articleDao.queryScopeRows(
+            accountId = accountService.getCurrentAccountId(),
+            view = view,
+            feedId = feedId,
+            groupId = groupId,
+            sortAscending = sortAscending,
+        )
+
+    /** S25a — page loader for generation paging (chunked under the SQLite var limit). */
+    suspend fun queryArticleWithFeedByIds(ids: List<String>): List<ArticleWithFeed> =
+        ids.chunked(500).flatMap { articleDao.queryArticleWithFeedByIds(it) }
+
+    /** S25a — (sortKey, rowid) of one article; null when the row is gone. */
+    suspend fun querySortPosition(articleId: String): ScopeRow? =
+        articleDao.querySortPosition(articleId)
+
+    /**
+     * S25a — SQL row-value neighbor fallback for an article that left the scope
+     * predicate (port of db.py:678). Returns (prev, next) article ids, either
+     * edge null.
+     */
+    suspend fun queryScopeNeighbors(
+        view: String,
+        feedId: String?,
+        groupId: String?,
+        sortAscending: Boolean,
+        articleId: String,
+    ): Neighbors {
+        val accountId = accountService.getCurrentAccountId()
+        val position = articleDao.querySortPosition(articleId) ?: return Neighbors(null, null)
+        val prev =
+            articleDao.queryScopeNeighborPrev(
+                accountId, view, feedId, groupId, sortAscending, position.sortKey, position.rowId,
+            )
+        val next =
+            articleDao.queryScopeNeighborNext(
+                accountId, view, feedId, groupId, sortAscending, position.sortKey, position.rowId,
+            )
+        return Neighbors(previous = prev, next = next)
+    }
+
     open suspend fun markAsStarred(articleId: String, isStarred: Boolean) {
         val accountId = accountService.getCurrentAccountId()
         articleDao.markAsStarredByArticleId(accountId, articleId, isStarred)
@@ -214,18 +280,35 @@ abstract class AbstractRssRepository(
             .queryAllGroupWithFeedAsFlow(accountService.getCurrentAccountId())
             .flowOn(dispatcherIO)
 
+    /**
+     * S15/S25a — [isRead] selects the recentlyRead view (`readAt IS NOT NULL`,
+     * ordered readAt DESC, rowid DESC) and takes precedence over the
+     * starred/unread flags.
+     */
     fun pullArticles(
         groupId: String?,
         feedId: String?,
         isStarred: Boolean,
         isUnread: Boolean,
+        isRead: Boolean = false,
         sortAscending: Boolean = false,
     ): PagingSource<Int, ArticleWithFeed> {
         val accountId = accountService.getCurrentAccountId()
         Log.i(
             "RLog",
-            "pullArticles: accountId: ${accountId}, groupId: ${groupId}, feedId: ${feedId}, isStarred: ${isStarred}, isUnread: ${isUnread}",
+            "pullArticles: accountId: ${accountId}, groupId: ${groupId}, feedId: ${feedId}, isStarred: ${isStarred}, isUnread: ${isUnread}, isRead: ${isRead}",
         )
+        if (isRead) {
+            return when {
+                groupId != null ->
+                    articleDao.queryArticleWithFeedByGroupIdWhenIsRecentlyRead(accountId, groupId)
+
+                feedId != null ->
+                    articleDao.queryArticleWithFeedByFeedIdWhenIsRecentlyRead(accountId, feedId)
+
+                else -> articleDao.queryArticleWithFeedWhenIsRecentlyRead(accountId)
+            }
+        }
         return when {
             groupId != null ->
                 when {

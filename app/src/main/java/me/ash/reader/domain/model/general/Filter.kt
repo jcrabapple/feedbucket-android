@@ -3,7 +3,9 @@ package me.ash.reader.domain.model.general
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Subject
 import androidx.compose.material.icons.outlined.FiberManualRecord
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.rounded.FiberManualRecord
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
 import androidx.compose.material.icons.rounded.Subject
@@ -34,12 +36,14 @@ class Filter private constructor(
     fun isStarred(): Boolean = this == Starred
     fun isUnread(): Boolean = this == Unread
     fun isAll(): Boolean = this == All
+    fun isRead(): Boolean = this == Read
 
     @Stable
     @Composable
     fun toName(): String = when (this) {
         Unread -> stringResource(R.string.unread)
         Starred -> stringResource(R.string.starred)
+        Read -> stringResource(R.string.recently_read)
         else -> stringResource(R.string.all)
     }
 
@@ -49,7 +53,19 @@ class Filter private constructor(
     fun toDesc(important: Int): String = when (this) {
         Starred -> pluralStringResource(R.plurals.starred_desc, important, important)
         Unread -> pluralStringResource(R.plurals.unread_desc, important, important)
+        Read -> pluralStringResource(R.plurals.recently_read_desc, important, important)
         else -> pluralStringResource(R.plurals.all_desc, important, important)
+    }
+
+    /**
+     * S24a/S25a — the scope-view name used in canonical position scope keys and
+     * generation snapshots (S15 view matrix).
+     */
+    fun viewName(): String = when (this) {
+        Starred -> "starred"
+        Unread -> "unread"
+        Read -> "recentlyRead"
+        else -> "all"
     }
 
     companion object {
@@ -69,6 +85,13 @@ class Filter private constructor(
             iconOutline = Icons.AutoMirrored.Rounded.Subject,
             iconFilled = Icons.AutoMirrored.Rounded.Subject,
         )
-        val values = listOf(Starred, Unread, All)
+
+        /** S15 — the recentlyRead view (`readAt IS NOT NULL`, ordered readAt DESC). */
+        val Read = Filter(
+            index = 3,
+            iconOutline = Icons.Outlined.History,
+            iconFilled = Icons.Rounded.History,
+        )
+        val values = listOf(Starred, Unread, All, Read)
     }
 }

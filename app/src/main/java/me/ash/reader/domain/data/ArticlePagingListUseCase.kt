@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import me.ash.reader.domain.model.article.ArticleFlowItem
+import me.ash.reader.domain.model.article.GenerationPagingSource
+import me.ash.reader.domain.model.article.ListGeneration
+import me.ash.reader.domain.model.article.NeighborRow
 import me.ash.reader.domain.model.article.mapPagingFlowItem
 import me.ash.reader.domain.service.AccountService
 import me.ash.reader.domain.service.RssService
@@ -49,6 +52,22 @@ constructor(
         )
     val pagerFlow: StateFlow<PagerData> = mutablePagerFlow
 
+    /**
+     * S25a — the current list generation (null while a legacy search scope is
+     * active; search generations arrive with the canonical grammar in Wave D).
+     * Read-state writes never invalidate it; only a scope change, account switch,
+     * or [rollGeneration] (sync completion / explicit refresh) rolls a new one.
+     */
+    private val _generationFlow = MutableStateFlow<ListGeneration?>(null)
+    val generationFlow: StateFlow<ListGeneration?> = _generationFlow
+
+    /** S25a(2) — refresh/sync completion rolls a new generation. */
+    private val generationTrigger = MutableStateFlow(0L)
+
+    fun rollGeneration() {
+        generationTrigger.value += 1L
+    }
+
     var itemSnapshotList by
         mutableStateOf(
             ItemSnapshotList<ArticleFlowItem>(
@@ -68,19 +87,27 @@ constructor(
 
     init {
         applicationScope.launch(ioDispatcher) {
-            filterStateUseCase.filterStateFlow
-                .combine(accountService.currentAccountIdFlow) { filterState, accountId ->
-                    filterState
-                }
-                .collect { filterState ->
+            combine(
+                filterStateUseCase.filterStateFlow,
+                accountService.currentAccountIdFlow,
+                generationTrigger,
+            ) { filterState, accountId, _ -> filterState to accountId }
+                .collectLatest { (filterState, _) ->
                     val searchContent = filterState.searchContent
+                    val sortAscending =
+                        settingsProvider.settings.flowSortUnreadArticles.value
 
-                    mutablePagerFlow.value =
-                        PagerData(
-                            Pager(
-                                    config = PagingConfig(pageSize = 50, enablePlaceholders = false)
-                                ) {
-                                    if (!searchContent.isNullOrBlank()) {
+                    if (!searchContent.isNullOrBlank()) {
+                        // Legacy search paging (pre-S10 grammar). Wave D replaces
+                        // this with canonical query generations; until then the
+                        // search scope has no generation snapshot.
+                        _generationFlow.value = null
+                        mutablePagerFlow.value =
+                            PagerData(
+                                Pager(
+                                        config =
+                                            PagingConfig(pageSize = 50, enablePlaceholders = false)
+                                    ) {
                                         rssService
                                             .get()
                                             .searchArticles(
@@ -89,29 +116,55 @@ constructor(
                                                 feedId = filterState.feed?.id,
                                                 isStarred = filterState.filter.isStarred(),
                                                 isUnread = filterState.filter.isUnread(),
-                                                sortAscending =
-                                                    settingsProvider.settings.flowSortUnreadArticles
-                                                        .value,
-                                            )
-                                    } else {
-                                        rssService
-                                            .get()
-                                            .pullArticles(
-                                                groupId = filterState.group?.id,
-                                                feedId = filterState.feed?.id,
-                                                isStarred = filterState.filter.isStarred(),
-                                                isUnread = filterState.filter.isUnread(),
-                                                sortAscending =
-                                                    settingsProvider.settings.flowSortUnreadArticles
-                                                        .value,
+                                                sortAscending = sortAscending,
                                             )
                                     }
-                                }
-                                .flow
-                                .map { it.mapPagingFlowItem(androidStringsHelper) }
-                                .cachedIn(applicationScope),
-                            filterState = filterState,
-                        )
+                                    .flow
+                                    .map { it.mapPagingFlowItem(androidStringsHelper) }
+                                    .cachedIn(applicationScope),
+                                filterState = filterState,
+                            )
+                    } else {
+                        // S25a — roll a generation anchored at scope entry or the
+                        // last refresh/sync; read-state writes never invalidate it.
+                        val rows =
+                            rssService
+                                .get()
+                                .queryScopeRows(
+                                    view = filterState.filter.viewName(),
+                                    feedId = filterState.feed?.id,
+                                    groupId = filterState.group?.id,
+                                    sortAscending = sortAscending,
+                                )
+                        val generation =
+                            ListGeneration(
+                                rows =
+                                    rows.map {
+                                        NeighborRow(
+                                            articleId = it.articleId,
+                                            sortKey = it.sortKey,
+                                            rowid = it.rowId,
+                                        )
+                                    },
+                                rolledAt = System.currentTimeMillis(),
+                            )
+                        _generationFlow.value = generation
+                        mutablePagerFlow.value =
+                            PagerData(
+                                Pager(
+                                        config =
+                                            PagingConfig(pageSize = 50, enablePlaceholders = false)
+                                    ) {
+                                        GenerationPagingSource(generation) { ids ->
+                                            rssService.get().queryArticleWithFeedByIds(ids)
+                                        }
+                                    }
+                                    .flow
+                                    .map { it.mapPagingFlowItem(androidStringsHelper) }
+                                    .cachedIn(applicationScope),
+                                filterState = filterState,
+                            )
+                    }
                 }
         }
         applicationScope.launch {

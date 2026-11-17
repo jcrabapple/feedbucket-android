@@ -16,6 +16,16 @@
         <item quantity="one">%1$d starred item</item>
         <item quantity="other">%1$d starred items</item>
     </plurals>
+    <string name="recently_read">Recently read</string>
+    <plurals name="recently_read_desc">
+        <item quantity="one">%1$d recently read item</item>
+        <item quantity="other">%1$d recently read items</item>
+    </plurals>
+    <string name="mark_all_read_confirm_title">Mark all as read?</string>
+    <plurals name="mark_all_read_confirm_message">
+        <item quantity="one">%1$d unread item in this scope will be marked as read.</item>
+        <item quantity="other">%1$d unread items in this scope will be marked as read.</item>
+    </plurals>
     <string name="feeds">Feeds</string>
     <string name="syncing">Syncing…</string>
     <string name="loading">Loading…</string>
