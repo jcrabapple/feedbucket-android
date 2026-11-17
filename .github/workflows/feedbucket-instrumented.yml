@@ -1,0 +1,144 @@
+name: FeedBucket Instrumented
+
+on:
+  push:
+    branches: [feedbucket-native]
+  pull_request:
+    branches: [feedbucket-native]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: instrumented-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Required gate: Room/search/state proof on API 35 x86_64 Google APIs (non-PlayStore).
+  api35:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+      - name: JDK 21
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Accept SDK licenses / install compileSdk platform
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Instrumented tests (API 35, x86_64, google_apis)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          cores: 4
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 8192M
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            export ANDROID_SERIAL="emulator-$EMULATOR_PORT"
+            adb devices
+            mkdir -p ci-logs
+            ./gradlew :app:connectedGithubDebugAndroidTest --no-daemon --no-parallel --max-workers=1 > ci-logs/gradle-console.txt 2>&1
+            rc=$?
+            tail -n 80 ci-logs/gradle-console.txt
+            adb -s "$ANDROID_SERIAL" logcat -d > ci-logs/logcat-${ANDROID_SERIAL}.txt 2>&1 || true
+            exit $rc
+      - name: Verify instrumentation results
+        if: always()
+        run: python3 scripts/verify_instrumented_results.py
+      - name: Upload instrumentation XML
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # actions/upload-artifact@v4
+        with:
+          name: instrumentation-xml-api35
+          path: app/build/outputs/androidTest-results/
+      - name: Upload instrumentation HTML report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # actions/upload-artifact@v4
+        with:
+          name: instrumentation-html-api35
+          path: app/build/reports/androidTests/
+      - name: Upload logcat and Gradle console
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # actions/upload-artifact@v4
+        with:
+          name: ci-logs-api35
+          path: ci-logs/
+
+  # Experimental: API 36 (Baklava) pairing. Not a hard gate; results documented
+  # for the leftover API36 behavioral gate (docs/APPROVED-DIRECTION.md S38).
+  api36:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # actions/checkout@v4
+      - name: JDK 21
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Accept SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Instrumented tests (API 36, x86_64, google_apis)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          cores: 4
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 8192M
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            export ANDROID_SERIAL="emulator-$EMULATOR_PORT"
+            adb devices
+            mkdir -p ci-logs
+            ./gradlew :app:connectedGithubDebugAndroidTest --no-daemon --no-parallel --max-workers=1 > ci-logs/gradle-console.txt 2>&1
+            rc=$?
+            tail -n 80 ci-logs/gradle-console.txt
+            adb -s "$ANDROID_SERIAL" logcat -d > ci-logs/logcat-${ANDROID_SERIAL}.txt 2>&1 || true
+            exit $rc
+      - name: Verify instrumentation results
+        if: always()
+        run: python3 scripts/verify_instrumented_results.py
+      - name: Upload instrumentation XML
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # actions/upload-artifact@v4
+        with:
+          name: instrumentation-xml-api36
+          path: app/build/outputs/androidTest-results/
+      - name: Upload instrumentation HTML report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # actions/upload-artifact@v4
+        with:
+          name: instrumentation-html-api36
+          path: app/build/reports/androidTests/
+      - name: Upload logcat and Gradle console
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # actions/upload-artifact@v4
+        with:
+          name: ci-logs-api36
+          path: ci-logs/
