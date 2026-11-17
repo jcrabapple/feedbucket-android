@@ -24,31 +24,32 @@ fun fetchGitCommitHash(): String {
 
 val gitCommitHash = fetchGitCommitHash()
 val keyProps = Properties()
-val releaseKeyPropsFile: File = rootProject.file("signature/keystore_release.properties")
-val debugKeyPropsFile: File = rootProject.file("signature/keystore.properties")
+// S35a: private release keystore lives OUTSIDE the repo. Properties are read
+// from $FEEDBUCKET_KEYSTORE_PROPERTIES or a gitignored repo-root
+// keystore.properties. The configuration phase never throws on absence; the
+// loud failure is scoped to release assembly/packaging via taskGraph guard.
+val keystorePropsOverride = System.getenv("FEEDBUCKET_KEYSTORE_PROPERTIES")
+val keyPropsFile: File =
+    keystorePropsOverride?.let { rootProject.file(it) } ?: rootProject.file("keystore.properties")
 
-
-if (releaseKeyPropsFile.exists()) {
-    println("Loading keystore properties from ${releaseKeyPropsFile.absolutePath}")
-    keyProps.load(FileInputStream(releaseKeyPropsFile))
-} else if (debugKeyPropsFile.exists()) {
-    keyProps.load(FileInputStream(debugKeyPropsFile))
+if (keyPropsFile.exists()) {
+    keyProps.load(FileInputStream(keyPropsFile))
 }
 
 android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "me.ash.reader"
+        applicationId = "us.snakepit.feedbucket"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 47
-        versionName = "0.16.2"
+        targetSdk = 36
+        versionCode = 1
+        versionName = "0.1.0"
 
         buildConfigField(
             "String",
             "USER_AGENT_STRING",
-            "\"ReadYou/${versionName}(${versionCode})\"",
+            "\"FeedBucket/${versionName}(${versionCode})\"",
         )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -73,14 +74,15 @@ android {
     }
     signingConfigs {
         create("release") {
-            keyAlias = keyProps["keyAlias"] as String?
-            keyPassword = keyProps["keyPassword"] as String?
-            storeFile = keyProps["storeFile"]?.let { file(it as String) }
-            storePassword = keyProps["storePassword"] as String?
+            (keyProps["keyAlias"] as String?)?.let { keyAlias = it }
+            (keyProps["keyPassword"] as String?)?.let { keyPassword = it }
+            (keyProps["storeFile"] as String?)?.let { storeFile = rootProject.file(it) }
+            (keyProps["storePassword"] as String?)?.let { storePassword = it }
         }
     }
     lint { disable.addAll(listOf("MissingTranslation", "ExtraTranslation")) }
     buildTypes {
+        getByName("debug") { applicationIdSuffix = ".debug" }
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -90,12 +92,29 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
         }
-        all { signingConfig = signingConfigs.getByName("release") }
+    }
+    // S35a: loud failure scoped to release assembly/packaging only. The
+    // configuration phase stays clean so debug builds and `gradlew tasks`
+    // work without any signing material present.
+    gradle.taskGraph.whenReady {
+        val releasePackagingScheduled =
+            allTasks.any {
+                it.path.startsWith(":app:") &&
+                    (it.name.startsWith("assemble") ||
+                        it.name.startsWith("package") ||
+                        it.name.startsWith("bundle")) &&
+                    it.name.endsWith("Release")
+            }
+        if (releasePackagingScheduled && !keyPropsFile.exists()) {
+            throw GradleException(
+                "Release signing requires private keystore; see docs/SPEC-v1.md S35a"
+            )
+        }
     }
     applicationVariants.all {
         outputs.all {
             (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-                "ReadYou-${defaultConfig.versionName}-${gitCommitHash}.apk"
+                "FeedBucket-${defaultConfig.versionName}-${gitCommitHash}.apk"
         }
     }
     kotlinOptions {

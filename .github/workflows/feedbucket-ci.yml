@@ -1,0 +1,52 @@
+name: FeedBucket CI
+
+on:
+  push:
+    branches: [feedbucket-native]
+  pull_request:
+    branches: [feedbucket-native]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Memory check
+        run: free -h
+
+      - name: Unit tests (githubDebug)
+        run: ./gradlew :app:testGithubDebugUnitTest --no-daemon --no-parallel --max-workers=1
+
+      - name: Assemble (githubDebug only, no signing material)
+        run: ./gradlew :app:assembleGithubDebug --no-daemon --no-parallel --max-workers=1
+
+      - name: Lint (githubDebug)
+        run: ./gradlew :app:lintGithubDebug --no-daemon --no-parallel --max-workers=1
+
+      - name: Lint delta gate
+        run: python3 scripts/lint_delta.py
+
+      - name: Stop Gradle
+        if: always()
+        run: ./gradlew --stop || true
+
+      - name: Upload test XMLs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: app/build/test-results/
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-githubDebug.xml

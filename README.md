@@ -22,6 +22,13 @@
 </div>
 
 <div align="center">
+    <h1>FeedBucket</h1>
+    <p>A standalone, no-account local Android RSS reader, forked from <a target="_blank" href="https://github.com/ReadYouApp/ReadYou">Read You</a> (upstream baseline <code>d2b979cc</code>, version 0.16.2 lineage).</p>
+    <p>FeedBucket keeps Read You's Kotlin/Compose foundation and GPL-3.0 license; upstream copyright and license notices are preserved in the source and in <a target="_blank" href="LICENSE">LICENSE</a>. Bundled Google Sans Flex font is licensed under SIL OFL 1.1 (see <code>app/src/main/res/raw/ofl_google_sans_flex.txt</code>).</p>
+    <p>Development branch: <code>feedbucket-native</code>. Application ID: <code>us.snakepit.feedbucket</code> (debug: <code>us.snakepit.feedbucket.debug</code>).</p>
+</div>
+
+<div align="center">
     <h1>Read You</h1>
     <p>An Android RSS reader presented in <a target="_blank" href="https://m3.material.io/">Material You</a> style.</p>
     <p>English&nbsp;&nbsp;|&nbsp;&nbsp;

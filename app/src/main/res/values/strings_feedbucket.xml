@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FeedBucket brand strings and third-party notices (S34/S36). -->
+<resources>
+    <string name="font_google_sans_flex_attribution" translatable="false">Google Sans Flex © 2015 Google LLC. All Rights Reserved. © 2022 The Google Sans Flex Project Authors (github.com/googlefonts/googlesans-flex). Licensed under the SIL Open Font License, Version 1.1 (see res/raw/ofl_google_sans_flex.txt).</string>
+</resources>
