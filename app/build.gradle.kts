@@ -176,6 +176,7 @@ dependencies {
 
     // AndroidX
     implementation(libs.android.svg)
+    implementation(libs.java.diff.utils)
     implementation(libs.opml.parser)
     implementation(libs.readability4j)
     implementation(libs.rome)
