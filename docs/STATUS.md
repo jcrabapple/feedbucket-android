@@ -52,8 +52,21 @@ Maintained by orchestrator checkpoint cards (Gate A / Gate B / Checkpoint C / ..
 - CI at exact head fe9c9a92: Build Commit 44119741746 success, FeedBucket CI (gate) 44119741936 success, FeedBucket Instrumented 44119741751 success (api35 + api36 jobs).
 - Local emulator infra t_90b494be remains BLOCKED (paused, not resolved; host emulator gfxstream crash + device-consent hook) — superseded by the hosted-CI emulator gate (t_e8fae1d9/t_cfc2686e); not a remaining blocker.
 
+## Verified Wave E (updates & diffs — D8)
+
+- Verified commit: `c1319ec7dcfcc54ccdfc1f8d05d8e294e0cc0b54` (pushed to origin/feedbucket-native; tree clean, no artificial merge).
+- Review path (t_0dad71fa): coder run 34 handoff -> review -> reviewer run 35 CHANGES-REQUIRED (5 blocking findings) -> coder run 36 fix round 2 -> reviewer run 37 approved (done). No direct-complete by coder.
+- Unit: 169/169, 0 failures/errors/skips (23 classes), re-parsed from fresh gate-run XML + independent re-parse by Checkpoint F.
+- Lint: fresh lint = 0 Errors vs committed baseline 28 Errors (28 removed); `scripts/lint_delta.py` PASS.
+- Gate E re-run by Checkpoint F: `bash scripts/gate.sh E` PASS (exit 0; 169/169 unit, assembleGithubDebug green, lintGithubDebug green, lint delta PASS).
+- Diff scope 1d71ff61..c1319ec7: 14 files, +2053/-93 — Wave E owned set + justified ripples (ReadingPage.kt S22 originalContent/contentChangedAt wiring; strings.xml UI labels); only dependency change = planned java-diff-utils 4.12 (io.github coordinate, Apache-2.0 recorded) per S22/S36; no other toml/build-file/CI changes -> S37/D17 posture unchanged.
+- Truth-table verified in code by Checkpoint F: compare keys use `publishedAt` never `date`; dateless rows keep frozen `date`; three-state recency; snapshot gate >50 first-version-only; markUpdated only when showUpdates; updated view ordered `date DESC, rowid DESC` via the ScopeSql default branch, `contentChangedAt` never a sort key; scoped mark-all-read drains already-read updated rows (account/group/feed).
+- REDCHECK: 6 initial triples (run 34) + 5 fix-round triples (run 36: threshold-0 flip, date-vs-publishedAt compare keys, token-length parity, display-token identity, separator removal, regex whitespace parity), each mutation -> red -> green; logs `build/recon/e1/e2/e3/e4-*.log`.
+- CI at exact head c1319ec7 (run 44148524014): Build success, FeedBucket CI gate success. Hosted instrumented api35 AND api36 RED: 44 tests each, 1 failure each — identical deterministic NPE in `ArticleDaoUpdatedViewTest.drainOnReadClearsIsUpdated` at `row(ArticleDaoUpdatedViewTest.kt:117)` (test-harness seed bug: `update()` without insert; production mark-read drain logic verified correct). Fix card t_3287a7d9 dispatched (coder); Wave F gated on it. The instrumented gate must be green at exact head before Wave F promotes.
+
 ## Pending
 
-- Wave E (updates & diffs — D8): card t_0dad71fa (coder, idempotency `feedbucket-android-v1-wave-e`), created by Checkpoint E; carries reviewer advisory (destination-specific state/render smoke with failure witness), D17 verbatim, memory guard, no-phone/no-live-web.
-- Checkpoint F (t_67ff9f5e, default) gated on Wave E; carries the continuation responsibility.
-- Waves F–H strictly serial: Wave E reviewed + integrated before Wave F dispatches (enforced by the checkpoint card chain).
+- Wave E hosted-instrumented fix (t_3287a7d9, coder): seed `ArticleDaoUpdatedViewTest.drainOnReadClearsIsUpdated`; require api35/api36 green at exact head (44/44 instrumented).
+- Wave F (durable downloads & offline — D9/D10): card t_cbccc792 (coder, idempotency `feedbucket-android-v1-wave-f`), gated on the fix card; carries reviewer advisory (destination-specific state/render smoke with failure witness), D17 verbatim, memory guard, no-phone/no-live-web.
+- Checkpoint G (t_754ea072, default) gated on Wave F; carries the continuation responsibility.
+- Waves F–H strictly serial: Wave F reviewed + integrated before Wave G dispatches (enforced by the checkpoint card chain).
