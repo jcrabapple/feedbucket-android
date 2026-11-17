@@ -207,8 +207,12 @@ class ArticleDaoSearchTest {
             article("a2", "Biotech News", feedId = feedBio.id),
             article("a3", "Untagged", feedId = feedBio.id), // feed tags 'biotech' only
         )
+        // S11a: tags are feed-level CSV; a2 AND a3 both live in feedBio (tags 'biotech').
         assertEquals(listOf("1\$a1"), db.articleDao().queryArticlesByTag(1, "tech").map { it.id })
-        assertEquals(listOf("1\$a2"), db.articleDao().queryArticlesByTag(1, "biotech").map { it.id })
+        assertEquals(
+            listOf("1\$a2", "1\$a3"),
+            db.articleDao().queryArticlesByTag(1, "biotech").map { it.id },
+        )
         assertEquals(listOf("1\$a1"), db.articleDao().queryArticlesByTag(1, "news").map { it.id })
     }
 
