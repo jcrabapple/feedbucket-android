@@ -88,7 +88,7 @@ class PositionPersistenceTest {
     // ---- S24a scope-key canonicalization ------------------------------------
 
     @Test
-    fun `scope key injectivity and round-trip`() {
+    fun scope_key_injectivity_and_round_trip() {
         val empty = PositionScope(view = "unread", feedId = "")
         val dash = PositionScope(view = "unread", feedId = "-")
         assertNotEquals(empty.key, dash.key)
@@ -101,7 +101,7 @@ class PositionPersistenceTest {
     }
 
     @Test
-    fun `unicode query restores exactly`() {
+    fun unicode_query_restores_exactly() {
         val scope = PositionScope(view = "unread", query = "straße İ 中文")
         assertEquals(scope.query, ScopeKey.decode(scope.key)!![4])
     }
@@ -109,7 +109,7 @@ class PositionPersistenceTest {
     // ---- S21a/S23 writer semantics ------------------------------------------
 
     @Test
-    fun `mark read sets readAt drains isUpdated bumps stateVersion in one write`() =
+    fun mark_read_sets_readAt_drains_isUpdated_bumps_stateVersion_in_one_write() =
         runBlocking {
             db.articleDao().insert(article("a", 3000, updated = true, stateVersion = 5))
 
@@ -125,7 +125,7 @@ class PositionPersistenceTest {
         }
 
     @Test
-    fun `mark unread clears readAt and bumps stateVersion`() = runBlocking {
+    fun mark_unread_clears_readAt_and_bumps_stateVersion() = runBlocking {
         db.articleDao()
             .insert(article("a", 3000, unread = false, readAt = Date(1000), stateVersion = 2))
 
@@ -138,7 +138,7 @@ class PositionPersistenceTest {
     }
 
     @Test
-    fun `scoped mark-all-read reports exact count`() = runBlocking {
+    fun scoped_mark_all_read_reports_exact_count() = runBlocking {
         db.feedDao()
             .insert(
                 Feed(
@@ -169,7 +169,7 @@ class PositionPersistenceTest {
     // ---- S15 recentlyRead view ----------------------------------------------
 
     @Test
-    fun `recentlyRead view ordered readAt desc rowid desc`() = runBlocking {
+    fun recentlyRead_view_ordered_readAt_desc_rowid_desc() = runBlocking {
         val older = Date(1000)
         val newer = Date(2000)
         db.articleDao().insert(
@@ -192,7 +192,7 @@ class PositionPersistenceTest {
     // ---- S25a generation snapshot -------------------------------------------
 
     @Test
-    fun `scope snapshot orders unread by date desc rowid desc`() = runBlocking {
+    fun scope_snapshot_orders_unread_by_date_desc_rowid_desc() = runBlocking {
         db.articleDao().insert(
             article("a", 3000), article("b", 2000), article("c", 1000),
         )
@@ -201,7 +201,7 @@ class PositionPersistenceTest {
     }
 
     @Test
-    fun `sticky generation - read write never removes reorders or invalidates`() =
+    fun sticky_generation_read_write_never_removes_reorders_or_invalidates() =
         runBlocking {
             db.articleDao().insert(
                 article("a", 3000), article("b", 2000), article("c", 1000),
@@ -237,7 +237,7 @@ class PositionPersistenceTest {
         }
 
     @Test
-    fun `rolled generation includes newly synced articles`() = runBlocking {
+    fun rolled_generation_includes_newly_synced_articles() = runBlocking {
         db.articleDao().insert(article("a", 3000), article("b", 2000))
         val gen1 =
             ListGeneration(
@@ -264,7 +264,7 @@ class PositionPersistenceTest {
     // ---- S24a durable restore -----------------------------------------------
 
     @Test
-    fun `position restores after store recreate and falls back safely`() =
+    fun position_restores_after_store_recreate_and_falls_back_safely() =
         runBlocking {
             val dao = db.positionDao()
             val scope = PositionScope(view = "unread")
@@ -287,7 +287,7 @@ class PositionPersistenceTest {
         }
 
     @Test
-    fun `corrupt position row falls back to top instead of crashing`() =
+    fun corrupt_position_row_falls_back_to_top_instead_of_crashing() =
         runBlocking {
             val dao = db.positionDao()
             val scope = PositionScope(view = "unread")
@@ -305,7 +305,7 @@ class PositionPersistenceTest {
         }
 
     @Test
-    fun `reading position persists and restores per article`() = runBlocking {
+    fun reading_position_persists_and_restores_per_article() = runBlocking {
         val dao = db.positionDao()
         val store = PositionStore(dao)
         store.persistReading("1\$a", scrollRatioPx = 4000, contentHeightPx = 20000)
