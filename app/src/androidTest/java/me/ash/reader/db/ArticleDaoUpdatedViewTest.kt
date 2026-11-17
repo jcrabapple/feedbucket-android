@@ -163,7 +163,7 @@ class ArticleDaoUpdatedViewTest {
 
     @Test
     fun drainOnReadClearsIsUpdated() = runBlocking {
-        db.articleDao().update(
+        db.articleDao().insert(
             article("a", publishedAt = Date(1000), isUpdated = true, contentChangedAt = t1),
         )
         db.articleDao().markAsReadByArticleId(1, "1\$a", isUnread = false, readAt = t2)
