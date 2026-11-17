@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.DownloadForOffline
+import androidx.compose.material.icons.outlined.ImportExport
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Palette
@@ -57,6 +58,7 @@ fun SettingsPage(
     navigateToTipsAndSupport: () -> Unit,
     navigateToRules: () -> Unit,
     navigateToDownloads: () -> Unit,
+    navigateToMigration: () -> Unit,
 ) {
     val context = LocalContext.current
     val newVersion = LocalNewVersionNumber.current
@@ -146,6 +148,15 @@ fun SettingsPage(
                         desc = stringResource(R.string.downloads_desc),
                         icon = Icons.Outlined.DownloadForOffline,
                         onClick = navigateToDownloads
+                    )
+                }
+                item {
+                    // Wave G — FeedBucket migration (S32a) + OPML (S33).
+                    SelectableSettingGroupItem(
+                        title = stringResource(R.string.import_export),
+                        desc = stringResource(R.string.migration_desc),
+                        icon = Icons.Outlined.ImportExport,
+                        onClick = navigateToMigration
                     )
                 }
                 item {

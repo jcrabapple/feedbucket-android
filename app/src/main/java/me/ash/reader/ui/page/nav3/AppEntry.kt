@@ -193,6 +193,13 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 navigateToTipsAndSupport = { backStack.add(Route.TipsAndSupport) },
                                 navigateToRules = { backStack.add(Route.Rules) },
                                 navigateToDownloads = { backStack.add(Route.Downloads) },
+                                navigateToMigration = { backStack.add(Route.Migration) },
+                            )
+                        }
+                    Route.Migration ->
+                        NavEntry(key) {
+                            me.ash.reader.ui.page.settings.migration.MigrationPage(
+                                onBack = onBack,
                             )
                         }
                     Route.Rules ->

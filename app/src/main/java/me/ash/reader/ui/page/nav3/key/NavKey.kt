@@ -32,6 +32,9 @@ sealed interface Route : NavKey {
     // Downloads (Wave F, S27a/S28/S29/S30a)
     @Serializable data object Downloads : Route
 
+    // Import & export (Wave G, S32a/S33 — FeedBucket migration + OPML)
+    @Serializable data object Migration : Route
+
     // Accounts
     @Serializable data object Accounts : Route
 

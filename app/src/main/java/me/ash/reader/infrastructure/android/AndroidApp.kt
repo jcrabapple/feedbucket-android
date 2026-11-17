@@ -89,6 +89,8 @@ class AndroidApp : Application(), Configuration.Provider {
 
     @Inject lateinit var downloadService: me.ash.reader.domain.service.DownloadService
 
+    @Inject lateinit var feedBucketImporter: me.ash.reader.domain.service.migration.FeedBucketImporter
+
     /**
      * When the application startup.
      * 1. Set the uncaught exception handler
@@ -110,6 +112,9 @@ class AndroidApp : Application(), Configuration.Provider {
             // reset to pending + re-enqueued once, orphan staging dirs GC'd,
             // corrupt `ready` dirs demoted to failed(storage).
             downloadService.reconcileOnStart()
+            // S32a step 8 — orphan import copies older than 7 days GC'd on
+            // app start (running runs are never collected).
+            feedBucketImporter.gcOrphanCopies()
         }
         Coil.setImageLoader(imageLoader)
     }
