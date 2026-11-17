@@ -126,13 +126,35 @@ class OfflineRenderTest {
     @Test
     fun hardenedWebSettingsAreApplied() {
         val webView = newWebViewOnMainThread()
-        OfflineArticleClient.harden(webView.settings)
-        assertFalse(webView.settings.javaScriptEnabled)
-        assertFalse(webView.settings.domStorageEnabled)
-        assertFalse(webView.settings.allowFileAccess)
-        assertFalse(webView.settings.allowContentAccess)
-        assertFalse(webView.settings.allowFileAccessFromFileURLs)
-        assertFalse(webView.settings.allowUniversalAccessFromFileURLs)
+        // WebView methods must run on the creating (main) thread.
+        data class Snapshot(
+            val javaScript: Boolean,
+            val domStorage: Boolean,
+            val fileAccess: Boolean,
+            val contentAccess: Boolean,
+            val fileUrls: Boolean,
+            val universalUrls: Boolean,
+        )
+        var snapshot: Snapshot? = null
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .runOnMainSync {
+                OfflineArticleClient.harden(webView.settings)
+                snapshot =
+                    Snapshot(
+                        javaScript = webView.settings.javaScriptEnabled,
+                        domStorage = webView.settings.domStorageEnabled,
+                        fileAccess = webView.settings.allowFileAccess,
+                        contentAccess = webView.settings.allowContentAccess,
+                        fileUrls = webView.settings.allowFileAccessFromFileURLs,
+                        universalUrls = webView.settings.allowUniversalAccessFromFileURLs,
+                    )
+            }
+        assertFalse(snapshot!!.javaScript)
+        assertFalse(snapshot!!.domStorage)
+        assertFalse(snapshot!!.fileAccess)
+        assertFalse(snapshot!!.contentAccess)
+        assertFalse(snapshot!!.fileUrls)
+        assertFalse(snapshot!!.universalUrls)
         // S30a: no JavascriptInterface on this path.
         // (WebView has no enumeration API; the composable never calls
         // addJavascriptInterface — asserted by construction and by the
