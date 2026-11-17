@@ -99,10 +99,14 @@ data class RestoredPosition(val itemIndex: Int, val itemOffsetPx: Int)
 @Singleton
 class PositionStore
 @Inject
-constructor(
-    private val positionDao: PositionDao,
-    private val now: () -> Long = { System.currentTimeMillis() },
-) {
+constructor(private val positionDao: PositionDao) {
+
+    /** Test seam: override the clock (defaults to wall time). */
+    private var now: () -> Long = { System.currentTimeMillis() }
+
+    constructor(positionDao: PositionDao, now: () -> Long) : this(positionDao) {
+        this.now = now
+    }
 
     suspend fun persist(
         scope: PositionScope,
@@ -152,6 +156,33 @@ constructor(
     suspend fun prune() {
         positionDao.pruneListPositions(now() - RETENTION_MS)
     }
+
+    /**
+     * S26 — persist a per-article reading (scroll) position.
+     * [scrollRatioPx] is the numerator of `scrollY/contentHeight * 10000` for
+     * scrollable content; for LazyColumn-based content it carries the first
+     * visible item index and [contentHeightPx] the item scroll offset (best
+     * effort, ±1 screen tolerance per S26).
+     */
+    suspend fun persistReading(articleId: String, scrollRatioPx: Int, contentHeightPx: Int) {
+        if (scrollRatioPx < 0) return
+        positionDao.upsertReadingPosition(
+            ReadingPosition(
+                articleId = articleId,
+                scrollRatioPx = scrollRatioPx,
+                contentHeightPx = contentHeightPx,
+                updatedAt = now(),
+            )
+        )
+    }
+
+    /** S26 — restore a per-article reading position; null/missing/corrupt → top. */
+    suspend fun restoreReading(articleId: String): ReadingPosition? =
+        try {
+            positionDao.queryReadingPosition(articleId)
+        } catch (_: Exception) {
+            null
+        }
 
     companion object {
         const val RETENTION_MS: Long = 30L * 24 * 60 * 60 * 1000

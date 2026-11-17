@@ -35,10 +35,12 @@ import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleFlowItem
 import me.ash.reader.domain.model.article.ArticleWithFeed
 import me.ash.reader.domain.model.article.Neighbors
+import me.ash.reader.domain.model.article.ReadLifecycle
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.general.MarkAsReadConditions
 import me.ash.reader.domain.model.position.PositionScope
 import me.ash.reader.domain.model.position.PositionStore
+import me.ash.reader.domain.model.position.ReadingPosition
 import me.ash.reader.domain.model.position.RestoredPosition
 import me.ash.reader.domain.service.GoogleReaderRssService
 import me.ash.reader.domain.service.LocalRssService
@@ -184,6 +186,14 @@ constructor(
     /** S24a — restore order: exact anchor id, else clamped index, else null (top). */
     suspend fun restorePosition(scope: PositionScope, ids: List<String>): RestoredPosition? =
         positionStore.restore(scope, ids)
+
+    /** S26 — per-article reading position. */
+    suspend fun persistReadingPosition(articleId: String, scrollRatioPx: Int, contentHeightPx: Int) =
+        positionStore.persistReading(articleId, scrollRatioPx, contentHeightPx)
+
+    /** S26 — per-article reading position; null → open at top. */
+    suspend fun restoreReadingPosition(articleId: String): ReadingPosition? =
+        positionStore.restoreReading(articleId)
 
     fun updateReadStatus(
         groupId: String?,
@@ -387,7 +397,12 @@ constructor(
             // the article read in place immediately (sticky generation, S25a);
             // the S21a DB write (readAt + isUpdated drain + stateVersion) lands in
             // one transaction when the diff holder commits.
-            if (settingsProvider.settings.markReadOnOpen.value && diffMapHolder.checkIfUnread(item)) {
+            if (
+                ReadLifecycle.onOpen(
+                    markReadOnOpen = settingsProvider.settings.markReadOnOpen.value,
+                    wasUnread = diffMapHolder.checkIfUnread(item),
+                ) != null
+            ) {
                 diffMapHolder.updateDiff(item, isUnread = false)
             }
             item.run {

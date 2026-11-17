@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,19 +36,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlin.math.abs
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.ash.reader.R
 import me.ash.reader.infrastructure.android.TextToSpeechManager
 import me.ash.reader.infrastructure.preference.LocalPullToSwitchArticle
 import me.ash.reader.infrastructure.preference.LocalReadingAutoHideToolbar
 import me.ash.reader.infrastructure.preference.LocalReadingBoldCharacters
+import me.ash.reader.infrastructure.preference.LocalReadingRenderer
 import me.ash.reader.infrastructure.preference.LocalReadingTextLineHeight
+import me.ash.reader.infrastructure.preference.ReadingRendererPreference
 import me.ash.reader.infrastructure.preference.not
 import me.ash.reader.ui.ext.collectAsStateValue
 import me.ash.reader.ui.ext.showToast
@@ -59,7 +68,7 @@ import me.ash.reader.ui.page.home.reading.tts.TtsButton
 private const val UPWARD = 1
 private const val DOWNWARD = -1
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterialApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterialApi::class, FlowPreview::class)
 @Composable
 fun ReadingPage(
     //    navController: NavHostController,
@@ -205,6 +214,116 @@ fun ReadingPage(
                                 val scrollState = rememberScrollState()
 
                                 val scope = rememberCoroutineScope()
+
+                                val renderer = LocalReadingRenderer.current
+                                val lifecycleOwner = LocalLifecycleOwner.current
+
+                                // S26 — restore the durable reading position once
+                                // per article content; missing/corrupt rows fall
+                                // back to top-of-article, never a crash.
+                                LaunchedEffect(readerState.articleId, content) {
+                                    val articleId = readerState.articleId ?: return@LaunchedEffect
+                                    val position =
+                                        viewModel.restoreReadingPosition(articleId)
+                                            ?: return@LaunchedEffect
+                                    when (renderer) {
+                                        ReadingRendererPreference.WebView -> {
+                                            // Wait until the content has height so
+                                            // the ratio resolves to a real offset.
+                                            snapshotFlow { scrollState.maxValue }
+                                                .first { it > 0 }
+                                            scrollState.scrollTo(
+                                                (
+                                                    position.scrollRatioPx.toLong() *
+                                                        scrollState.maxValue / 10000
+                                                    )
+                                                    .toInt(),
+                                            )
+                                        }
+
+                                        ReadingRendererPreference.NativeComponent -> {
+                                            val count = listState.layoutInfo.totalItemsCount
+                                            if (count > 0) {
+                                                listState.scrollToItem(
+                                                    minOf(position.scrollRatioPx, count - 1),
+                                                    position.contentHeightPx,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // S26 — persist on scroll-idle (debounced 300 ms).
+                                LaunchedEffect(readerState.articleId, renderer) {
+                                    val articleId =
+                                        readerState.articleId ?: return@LaunchedEffect
+                                    if (renderer == ReadingRendererPreference.WebView) {
+                                        snapshotFlow { scrollState.value }
+                                            .debounce(300)
+                                            .collect { value ->
+                                                val max = scrollState.maxValue
+                                                if (max > 0) {
+                                                    viewModel.persistReadingPosition(
+                                                        articleId,
+                                                        value * 10000 / max,
+                                                        max,
+                                                    )
+                                                }
+                                            }
+                                    } else {
+                                        snapshotFlow {
+                                            listState.firstVisibleItemIndex to
+                                                listState.firstVisibleItemScrollOffset
+                                        }
+                                            .debounce(300)
+                                            .collect { (index, offset) ->
+                                                if (index > 0 || offset > 0) {
+                                                    viewModel.persistReadingPosition(
+                                                        articleId,
+                                                        index,
+                                                        offset,
+                                                    )
+                                                }
+                                            }
+                                    }
+                                }
+
+                                // S26 — persist on ON_PAUSE / navigation-away.
+                                DisposableEffect(lifecycleOwner, readerState.articleId, renderer) {
+                                    val observer =
+                                        LifecycleEventObserver { _, event ->
+                                            if (event == Lifecycle.Event.ON_PAUSE) {
+                                                val articleId = readerState.articleId
+                                                if (articleId != null) {
+                                                    scope.launch {
+                                                        if (renderer ==
+                                                            ReadingRendererPreference.WebView
+                                                        ) {
+                                                            val max = scrollState.maxValue
+                                                            if (max > 0) {
+                                                                viewModel.persistReadingPosition(
+                                                                    articleId,
+                                                                    scrollState.value * 10000 / max,
+                                                                    max,
+                                                                )
+                                                            }
+                                                        } else if (
+                                                            listState.firstVisibleItemIndex > 0 ||
+                                                            listState.firstVisibleItemScrollOffset > 0
+                                                        ) {
+                                                            viewModel.persistReadingPosition(
+                                                                articleId,
+                                                                listState.firstVisibleItemIndex,
+                                                                listState.firstVisibleItemScrollOffset,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    lifecycleOwner.lifecycle.addObserver(observer)
+                                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                                }
 
                                 LaunchedEffect(bringToTop) {
                                     if (bringToTop) {

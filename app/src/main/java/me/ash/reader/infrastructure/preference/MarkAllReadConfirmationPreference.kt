@@ -40,8 +40,10 @@ sealed class MarkAllReadConfirmationPreference(val value: Boolean) : Preference(
 
     companion object {
 
-        val default = ON
-        val values = listOf(ON, OFF)
+        // `by lazy` avoids the JVM recursive-init trap: touching ON first
+        // would otherwise leave `default` null during outer-class <clinit>.
+        val default: MarkAllReadConfirmationPreference by lazy { ON }
+        val values: List<MarkAllReadConfirmationPreference> by lazy { listOf(ON, OFF) }
 
         fun fromPreferences(preferences: Preferences) =
             when (preferences[DataStoreKey.keys[markAllReadConfirmation]?.key as Preferences.Key<Boolean>]) {

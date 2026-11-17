@@ -40,8 +40,10 @@ sealed class HideRecentlyReadPreference(val value: Boolean) : Preference() {
 
     companion object {
 
-        val default = OFF
-        val values = listOf(ON, OFF)
+        // `by lazy` avoids the JVM recursive-init trap: touching OFF first
+        // would otherwise leave `default` null during outer-class <clinit>.
+        val default: HideRecentlyReadPreference by lazy { OFF }
+        val values: List<HideRecentlyReadPreference> by lazy { listOf(ON, OFF) }
 
         fun fromPreferences(preferences: Preferences) =
             when (preferences[DataStoreKey.keys[hideRecentlyRead]?.key as Preferences.Key<Boolean>]) {
