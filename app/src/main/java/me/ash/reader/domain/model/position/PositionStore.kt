@@ -1,5 +1,7 @@
 package me.ash.reader.domain.model.position
 
+import javax.inject.Inject
+import javax.inject.Singleton
 import me.ash.reader.domain.repository.PositionDao
 
 /**
@@ -94,7 +96,10 @@ data class RestoredPosition(val itemIndex: Int, val itemOffsetPx: Int)
  * clamped to the list → else `null` (top). Missing or corrupt rows never crash; they
  * fall back to top. [prune] drops rows older than [RETENTION_MS] (30 days, S24a).
  */
-class PositionStore(
+@Singleton
+class PositionStore
+@Inject
+constructor(
     private val positionDao: PositionDao,
     private val now: () -> Long = { System.currentTimeMillis() },
 ) {

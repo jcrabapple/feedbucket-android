@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FabPosition
 import androidx.compose.material3.LargeTopAppBar
@@ -42,9 +43,11 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,22 +61,34 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.ash.reader.R
 import me.ash.reader.domain.data.PagerData
 import me.ash.reader.domain.model.article.ArticleFlowItem
 import me.ash.reader.domain.model.article.ArticleWithFeed
+import me.ash.reader.domain.model.general.Filter
+import me.ash.reader.domain.model.general.MarkAsReadConditions
+import me.ash.reader.domain.model.position.PositionScope
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListDateStickyHeader
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListFeedIcon
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListTonalElevation
@@ -81,6 +96,8 @@ import me.ash.reader.infrastructure.preference.LocalFlowFilterBarPadding
 import me.ash.reader.infrastructure.preference.LocalFlowFilterBarStyle
 import me.ash.reader.infrastructure.preference.LocalFlowFilterBarTonalElevation
 import me.ash.reader.infrastructure.preference.LocalFlowTopBarTonalElevation
+import me.ash.reader.infrastructure.preference.LocalHideRecentlyRead
+import me.ash.reader.infrastructure.preference.LocalMarkAllReadConfirmation
 import me.ash.reader.infrastructure.preference.LocalMarkAsReadOnScroll
 import me.ash.reader.infrastructure.preference.LocalOpenLink
 import me.ash.reader.infrastructure.preference.LocalOpenLinkSpecificBrowser
@@ -112,6 +129,7 @@ import me.ash.reader.ui.page.home.reading.rememberPullToLoadState
     ExperimentalMaterial3Api::class,
     ExperimentalSharedTransitionApi::class,
     ExperimentalMaterialApi::class,
+    FlowPreview::class,
 )
 @Composable
 fun FlowPage(
@@ -139,6 +157,8 @@ fun FlowPage(
 
     val settings = LocalSettings.current
     val pullToSwitchFeed = settings.pullToSwitchFeed
+    val markAllReadConfirmation = LocalMarkAllReadConfirmation.current.value
+    val hideRecentlyRead = LocalHideRecentlyRead.current.value
 
     val flowUiState = viewModel.flowUiState.collectAsStateValue()
     if (flowUiState == null) return
@@ -168,6 +188,24 @@ fun FlowPage(
     var currentPullToLoadState: PullToLoadState? by remember { mutableStateOf(null) }
     var currentLoadAction: LoadAction? by remember { mutableStateOf(null) }
 
+    // S25a confirmation dialog state: the pending condition and exact scoped count.
+    var confirmMarkAll by remember { mutableStateOf<MarkAsReadConditions?>(null) }
+    var confirmMarkAllCount by remember { mutableStateOf(0) }
+
+    val sortByEarliest =
+        filterUiState.filter.isUnread() &&
+            LocalSortUnreadArticles.current == SortUnreadArticlesPreference.Earliest
+
+    // S24a — canonical position scope for the active list scope.
+    val positionScope =
+        PositionScope(
+            view = filterUiState.filter.viewName(),
+            feedId = filterUiState.feed?.id,
+            groupId = filterUiState.group?.id,
+            query = filterUiState.searchContent ?: "",
+            sort = if (sortByEarliest) "asc" else "desc",
+        )
+
     val settleSpec = remember { spring<Float>(dampingRatio = Spring.DampingRatioLowBouncy) }
 
     val lastVisibleIndex =
@@ -188,10 +226,6 @@ fun FlowPage(
     val onToggleRead: (ArticleWithFeed) -> Unit = remember {
         { articleWithFeed -> viewModel.diffMapHolder.updateDiff(articleWithFeed) }
     }
-
-    val sortByEarliest =
-        filterUiState.filter.isUnread() &&
-            LocalSortUnreadArticles.current == SortUnreadArticlesPreference.Earliest
 
     val onMarkAboveAsRead: ((ArticleWithFeed) -> Unit)? =
         remember(sortByEarliest) {
@@ -306,6 +340,26 @@ fun FlowPage(
 
     val isSyncing = viewModel.isSyncingFlow.collectAsStateValue()
 
+    // S24a — persist the position on ON_PAUSE / navigation-away.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, positionScope.key) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_PAUSE) {
+                    val index = listState.firstVisibleItemIndex
+                    val offset = listState.firstVisibleItemScrollOffset
+                    val anchorId =
+                        (pagingItems?.peek(index) as? ArticleFlowItem.Article)
+                            ?.articleWithFeed?.article?.id
+                    scope.launch {
+                        viewModel.persistPosition(positionScope, anchorId, index, offset)
+                    }
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         RYScaffold(
             containerTonalElevation = articleListTonalElevation.value.dp,
@@ -377,7 +431,12 @@ fun FlowPage(
                             }
                         },
                         actions = {
-                            RYExtensibleVisibility(visible = !filterUiState.filter.isStarred()) {
+                            // S15 — mark-all-read is meaningless in the starred
+                            // and recentlyRead views.
+                            RYExtensibleVisibility(
+                                visible =
+                                    filterUiState.filter.isUnread() || filterUiState.filter.isAll()
+                            ) {
                                 FeedbackIconButton(
                                     imageVector = Icons.Rounded.DoneAll,
                                     contentDescription = stringResource(R.string.mark_all_as_read),
@@ -480,16 +539,63 @@ fun FlowPage(
                 RYExtensibleVisibility(markAsRead) {
                     BackHandler(markAsRead) { markAsRead = false }
 
-                    MarkAsReadBar {
-                        markAsRead = false
-                        viewModel.updateReadStatus(
-                            groupId = filterUiState.group?.id,
-                            feedId = filterUiState.feed?.id,
-                            articleId = null,
-                            conditions = it,
-                            isUnread = false,
-                        )
+                    MarkAsReadBar { conditions ->
+                        if (markAllReadConfirmation && conditions == MarkAsReadConditions.All) {
+                            // S25a — confirmation default ON (web
+                            // mark_as_read_confirmation default 1): report the
+                            // exact scoped unread count before applying.
+                            scope.launch {
+                                confirmMarkAllCount = viewModel.countUnreadInScope()
+                                confirmMarkAll = conditions
+                                markAsRead = false
+                            }
+                        } else {
+                            markAsRead = false
+                            viewModel.updateReadStatus(
+                                groupId = filterUiState.group?.id,
+                                feedId = filterUiState.feed?.id,
+                                articleId = null,
+                                conditions = conditions,
+                                isUnread = false,
+                            )
+                        }
                     }
+                }
+                confirmMarkAll?.let { conditions ->
+                    AlertDialog(
+                        onDismissRequest = { confirmMarkAll = null },
+                        title = { Text(stringResource(R.string.mark_all_read_confirm_title)) },
+                        text = {
+                            Text(
+                                pluralStringResource(
+                                    R.plurals.mark_all_read_confirm_message,
+                                    confirmMarkAllCount,
+                                    confirmMarkAllCount,
+                                )
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    confirmMarkAll = null
+                                    viewModel.updateReadStatus(
+                                        groupId = filterUiState.group?.id,
+                                        feedId = filterUiState.feed?.id,
+                                        articleId = null,
+                                        conditions = conditions,
+                                        isUnread = false,
+                                    )
+                                }
+                            ) {
+                                Text(stringResource(R.string.confirm))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmMarkAll = null }) {
+                                Text(stringResource(R.string.cancel))
+                            }
+                        },
+                    )
                 }
                 val contentTransitionVertical =
                     sharedYAxisTransitionExpressive(direction = Direction.Forward)
@@ -565,14 +671,33 @@ fun FlowPage(
 
                     val listState = remember(pager) { listState }
 
-                    val isSyncing by rememberUpdatedState(isSyncing)
-
-                    LaunchedEffect(pagingItems) {
+                    // S24a — restore the durable list position for this scope and
+                    // generation: exact anchor id, else clamped index, else top
+                    // (corrupt/missing rows never crash). Runs per pager, so a
+                    // refresh/sync generation roll re-applies the stored anchor.
+                    LaunchedEffect(pager) {
                         snapshotFlow { pagingItems.loadState.isIdle }
+                            .first { it }
+                        val ids =
+                            viewModel.listGenerationFlow.value?.ids ?: emptyList()
+                        viewModel.restorePosition(positionScope, ids)?.let {
+                            listState.scrollToItem(it.itemIndex, it.itemOffsetPx)
+                        }
+                    }
+
+                    // S24a — persist the position on scroll-idle (debounced 300 ms).
+                    LaunchedEffect(pager, positionScope.key) {
+                        snapshotFlow { listState.isScrollInProgress }
+                            .filter { !it }
+                            .drop(1)
+                            .debounce(300)
                             .collect {
-                                if (isSyncing) {
-                                    listState.scrollToItem(0)
-                                }
+                                val index = listState.firstVisibleItemIndex
+                                val offset = listState.firstVisibleItemScrollOffset
+                                val anchorId =
+                                    (pagingItems.peek(index) as? ArticleFlowItem.Article)
+                                        ?.articleWithFeed?.article?.id
+                                viewModel.persistPosition(positionScope, anchorId, index, offset)
                             }
                     }
 
@@ -717,6 +842,15 @@ fun FlowPage(
                             )
                         },
                     filter = filterUiState.filter,
+                    filters =
+                        if (hideRecentlyRead) {
+                            // S15 — HideRecentlyReadPreference (default OFF) hides
+                            // the recentlyRead view from the bar; the view itself
+                            // still exists.
+                            Filter.values.filter { it != Filter.Read }
+                        } else {
+                            Filter.values
+                        },
                     filterBarStyle = filterBarStyle.value,
                     filterBarFilled = true,
                     filterBarPadding = filterBarPadding.dp,

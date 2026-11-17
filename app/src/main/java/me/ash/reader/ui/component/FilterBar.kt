@@ -36,6 +36,7 @@ fun FilterBar(
     filterBarFilled: Boolean,
     filterBarPadding: Dp,
     filterBarTonalElevation: Dp,
+    filters: List<Filter> = Filter.values,
     filterOnClick: (Filter) -> Unit = {},
 ) {
     val view = LocalView.current
@@ -67,7 +68,7 @@ fun FilterBar(
         ) {
 
             Spacer(modifier = Modifier.width(filterBarPadding))
-            Filter.values.forEach { item ->
+            filters.forEach { item ->
                 NavigationBarItem(
                     modifier = Modifier.height(containerHeight),
                     alwaysShowLabel = when (filterBarStyle) {

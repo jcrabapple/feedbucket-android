@@ -8,6 +8,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Date
+import java.util.UUID
 import javax.inject.Inject
 import kotlin.collections.any
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,8 +34,12 @@ import me.ash.reader.domain.data.PagerData
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleFlowItem
 import me.ash.reader.domain.model.article.ArticleWithFeed
+import me.ash.reader.domain.model.article.Neighbors
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.general.MarkAsReadConditions
+import me.ash.reader.domain.model.position.PositionScope
+import me.ash.reader.domain.model.position.PositionStore
+import me.ash.reader.domain.model.position.RestoredPosition
 import me.ash.reader.domain.service.GoogleReaderRssService
 import me.ash.reader.domain.service.LocalRssService
 import me.ash.reader.domain.service.RssService
@@ -66,6 +71,7 @@ constructor(
     val textToSpeechManager: TextToSpeechManager,
     private val imageDownloader: AndroidImageDownloader,
     private val articleListUseCase: ArticlePagingListUseCase,
+    private val positionStore: PositionStore,
     workManager: WorkManager,
 ) : ViewModel() {
 
@@ -138,7 +144,46 @@ constructor(
         viewModelScope.launch {
             syncWorkerStatusFlow.debounce(500L).collect { _isSyncingFlow.value = it }
         }
+        // S25a(2) — sync completion rolls a new list generation (MAY include new
+        // articles); deduped by work id so an observed terminal state rolls once.
+        viewModelScope.launch {
+            workManager.getWorkInfosByTagFlow(SyncWorker.SYNC_TAG).collect { infos ->
+                infos
+                    .filter { it.state == WorkInfo.State.SUCCEEDED }
+                    .forEach { info ->
+                        if (seenSyncIds.add(info.id)) {
+                            articleListUseCase.rollGeneration()
+                        }
+                    }
+            }
+        }
     }
+
+    private val seenSyncIds = mutableSetOf<UUID>()
+
+    /** S25a — the current list generation (null on legacy search scopes). */
+    val listGenerationFlow = articleListUseCase.generationFlow
+
+    // S24a — 30-day position retention is pruned on app start.
+    init {
+        applicationScope.launch(ioDispatcher) {
+            positionStore.prune()
+        }
+    }
+
+    /** S24a — persist the durable list position for the active scope. */
+    suspend fun persistPosition(
+        scope: PositionScope,
+        anchorArticleId: String?,
+        index: Int,
+        offset: Int,
+    ) {
+        positionStore.persist(scope, anchorArticleId, index, offset)
+    }
+
+    /** S24a — restore order: exact anchor id, else clamped index, else null (top). */
+    suspend fun restorePosition(scope: PositionScope, ids: List<String>): RestoredPosition? =
+        positionStore.restore(scope, ids)
 
     fun updateReadStatus(
         groupId: String?,
@@ -148,6 +193,20 @@ constructor(
         isUnread: Boolean,
     ) {
         applicationScope.launch(ioDispatcher) {
+            // Keep loaded badges fresh in the sticky generation (S25a): the DB
+            // write covers the whole scoped match set; the overlay updates the
+            // loaded items in place without invalidating the generation.
+            if (!isUnread) {
+                val before = conditions.toDate()
+                val items =
+                    articleListUseCase.itemSnapshotList.items
+                        .filterIsInstance<ArticleFlowItem.Article>()
+                        .map { it.articleWithFeed }
+                        .filter { it.article.isUnread && it.article.date.before(before) }
+                if (items.isNotEmpty()) {
+                    diffMapHolder.updateDiff(articleWithFeed = items.toTypedArray(), isUnread = false)
+                }
+            }
             rssService
                 .get()
                 .markAsRead(
@@ -199,15 +258,46 @@ constructor(
         }
     }
 
+    /**
+     * S25a — scoped mark-all-read over the current list scope (view/feed/group):
+     * the DB write covers the WHOLE scope in one transaction (S21a semantics:
+     * readAt set, isUpdated drained, stateVersion bumped) while the overlay
+     * updates already-loaded items in place (sticky generation). Returns the
+     * exact affected count (web mark_all_read parity).
+     */
     fun markAllAsRead() {
-        viewModelScope.launch {
+        viewModelScope.launch(ioDispatcher) {
             val items =
                 articleListUseCase.itemSnapshotList.items
                     .filterIsInstance<ArticleFlowItem.Article>()
                     .map { it.articleWithFeed }
+                    .filter { it.article.isUnread }
 
             diffMapHolder.updateDiff(articleWithFeed = items.toTypedArray(), isUnread = false)
+
+            val filterState = filterStateUseCase.filterStateFlow.value
+            rssService
+                .get()
+                .markAsRead(
+                    groupId = filterState.group?.id,
+                    feedId = filterState.feed?.id,
+                    articleId = null,
+                    before = Date(Long.MAX_VALUE),
+                    isUnread = false,
+                )
         }
+    }
+
+    /** S25a — exact unread count in the current scope, for the confirmation dialog. */
+    suspend fun countUnreadInScope(): Int {
+        val filterState = filterStateUseCase.filterStateFlow.value
+        return rssService
+            .get()
+            .countUnreadInScope(
+                feedId = filterState.feed?.id,
+                groupId = filterState.group?.id,
+                before = Date(Long.MAX_VALUE),
+            )
     }
 
     fun sync() {
@@ -293,12 +383,20 @@ constructor(
                     ?: (itemFromList?.articleWithFeed
                         ?: rssService.get().findArticleById(articleId)!!)
 
-            if (diffMapHolder.checkIfUnread(item)) {
+            // S23 — mark-read-on-open (default ON, web parity): the overlay marks
+            // the article read in place immediately (sticky generation, S25a);
+            // the S21a DB write (readAt + isUpdated drain + stateVersion) lands in
+            // one transaction when the diff holder commits.
+            if (settingsProvider.settings.markReadOnOpen.value && diffMapHolder.checkIfUnread(item)) {
                 diffMapHolder.updateDiff(item, isUnread = false)
             }
             item.run {
                 _readingUiState.update {
-                    it.copy(articleWithFeed = this, isStarred = article.isStarred, isUnread = false)
+                    it.copy(
+                        articleWithFeed = this,
+                        isStarred = article.isStarred,
+                        isUnread = diffMapHolder.checkIfUnread(this),
+                    )
                 }
                 _readerState.update {
                     it.copy(
@@ -390,9 +488,56 @@ constructor(
         _readerState.update { it.copy(content = ReaderState.Loading) }
     }
 
-    fun ReaderState.prefetchArticleId(): ReaderState {
+    /**
+     * S25a — resolve prev/next over the CURRENT scope ordering. When a list
+     * generation is active, neighbors come from the generation rows (membership
+     * or in-generation position fallback); when the current article is outside
+     * the generation entirely, the SQL row-value fallback (port of db.py:678)
+     * resolves by sort position. Legacy search scopes keep the loaded-snapshot
+     * walk (canonical search generations arrive in Wave D).
+     */
+    suspend fun ReaderState.prefetchArticleId(): ReaderState {
+        val currentId = currentArticle?.id ?: return copy(listIndex = null)
+        val filterState = filterStateUseCase.filterStateFlow.value
+        val sortAscending = settingsProvider.settings.flowSortUnreadArticles.value
+        val generation = articleListUseCase.generationFlow.value
+
+        if (generation != null) {
+            val neighbors =
+                if (generation.indexOf(currentId) != -1) {
+                    generation.neighbors(currentId, ascending = sortAscending)
+                } else {
+                    rssService
+                        .get()
+                        .queryScopeNeighbors(
+                            view = filterState.filter.viewName(),
+                            feedId = filterState.feed?.id,
+                            groupId = filterState.group?.id,
+                            sortAscending = sortAscending,
+                            articleId = currentId,
+                        )
+                }
+            val index = generation.indexOf(currentId)
+            return copy(
+                listIndex = index,
+                previousArticle =
+                    neighbors.previous?.let {
+                        ReaderState.PrefetchResult(
+                            articleId = it,
+                            index = generation.indexOf(it),
+                        )
+                    },
+                nextArticle =
+                    neighbors.next?.let {
+                        ReaderState.PrefetchResult(
+                            articleId = it,
+                            index = generation.indexOf(it),
+                        )
+                    },
+            )
+        }
+
         val items = articleListUseCase.itemSnapshotList
-        val currentId = currentArticle?.id
         val index =
             items.indexOfFirst { item ->
                 item is ArticleFlowItem.Article && item.articleWithFeed.article.id == currentId
