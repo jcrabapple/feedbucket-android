@@ -192,6 +192,9 @@ sealed interface PreferencesKey {
         const val swipeEndAction = "swipeEndAction"
         const val markAsReadOnScroll = "markAsReadOnScroll"
         const val hideEmptyGroups = "hideEmptyGroups"
+        const val markReadOnOpen = "markReadOnOpen"
+        const val markAllReadConfirmation = "markAllReadConfirmation"
+        const val hideRecentlyRead = "hideRecentlyRead"
         const val pullToLoadNextFeed = "pullToLoadNextFeed"
         const val pullToSwitchArticle = "pullToSwitchArticle"
         const val openLink = "openLink"
@@ -268,6 +271,9 @@ sealed interface PreferencesKey {
                 IntKey(swipeEndAction),
                 BooleanKey(markAsReadOnScroll),
                 BooleanKey(hideEmptyGroups),
+                BooleanKey(markReadOnOpen),
+                BooleanKey(markAllReadConfirmation),
+                BooleanKey(hideRecentlyRead),
                 BooleanKey(pullToLoadNextFeed),
                 BooleanKey(pullToSwitchArticle),
                 IntKey(openLink),
@@ -354,6 +360,9 @@ data class DataStoreKey<T>(val key: Preferences.Key<T>, val type: Class<T>) {
         const val swipeEndAction = "swipeEndAction"
         const val markAsReadOnScroll = "markAsReadOnScroll"
         const val hideEmptyGroups = "hideEmptyGroups"
+        const val markReadOnOpen = "markReadOnOpen"
+        const val markAllReadConfirmation = "markAllReadConfirmation"
+        const val hideRecentlyRead = "hideRecentlyRead"
         const val pullToLoadNextFeed = "pullToLoadNextFeed"
         const val pullToSwitchArticle = "pullToSwitchArticle"
         const val openLink = "openLink"
@@ -500,6 +509,15 @@ data class DataStoreKey<T>(val key: Preferences.Key<T>, val type: Class<T>) {
                     DataStoreKey(booleanPreferencesKey(markAsReadOnScroll), Boolean::class.java),
                 hideEmptyGroups to
                     DataStoreKey(booleanPreferencesKey(hideEmptyGroups), Boolean::class.java),
+                markReadOnOpen to
+                    DataStoreKey(booleanPreferencesKey(markReadOnOpen), Boolean::class.java),
+                markAllReadConfirmation to
+                    DataStoreKey(
+                        booleanPreferencesKey(markAllReadConfirmation),
+                        Boolean::class.java,
+                    ),
+                hideRecentlyRead to
+                    DataStoreKey(booleanPreferencesKey(hideRecentlyRead), Boolean::class.java),
                 pullToLoadNextFeed to
                     DataStoreKey(booleanPreferencesKey(pullToLoadNextFeed), Boolean::class.java),
                 pullToSwitchArticle to
