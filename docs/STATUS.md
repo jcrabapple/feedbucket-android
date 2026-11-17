@@ -24,9 +24,22 @@ Maintained by orchestrator checkpoint cards (Gate A / Gate B / Checkpoint C / ..
 - Diff scope 32d31139..f526432e: 44 files, +4074/-131 — exactly the Wave B owned-files list (schema 8.json committed; UUID.randomUUID gone from RssHelper.kt; no dependency/toml/build-file changes → S37/D17 posture unchanged).
 - Instrumented: DEFERRED (integration blocker) — 17 tests executed earlier on test_api36 (12 green pre-fix); post-fix re-run blocked by host emulator regression (qemu SwiftShader SIGSEGV on cold boot; `-gpu off` reaches adb-unauthorized then drops; host-GPU needs a physical desktop click — off-limits). Emulator-restore infra card t_d9844f3c dispatched; deferral must close before runtime-critical waves promote.
 
+## Verified Wave C (reading reliability — read-state, positions, recently read, neighbors)
+
+- Verified commit: `b646b5025adb5fe020fe524c2cff3acc4ed8596c` (pushed to origin/feedbucket-native; tree clean, no artificial merge).
+- Review path (t_52fed684): coder run 15 handoff -> review rounds 16-17 -> reviewer run 18 approved (done). No direct-complete by coder.
+- Fixture-fix path (t_cfc2686e): coder run 24 -> reviewer run 25 approved (done) at b646b502; 2 instrumented fixture defects corrected (absent-anchor clamp expectation, Article-FK seed) + new out-of-range clamp @Test; API36 promoted to required hosted gate.
+- Unit: 82/82, 0 failures / 0 errors (14 classes), re-parsed from `app/build/test-results/**/*.xml` at HEAD.
+- Lint: fresh lint = 0 Errors vs committed baseline 28 Errors; `scripts/lint_delta.py` PASS.
+- Instrumented (hosted GitHub CI, exact head b646b502, run 44091492105): independently downloaded artifact XMLs and parsed — API35 30/30 (PositionPersistenceTest 13/13, ArticleDaoSearchTest 9/9, Migration7To8Test 5/5, AppLaunchSmokeTest 1, MigrationTestHarness 1, ExampleInstrumentedTest 1), API36 identical 30/30; 0 failures/errors/skips on both. Runtime deferrals from Wave C review (7 PositionPersistenceTest behaviors + post-fix tag test) CLOSED.
+- CI at exact head b646b502: build, gate, api35, api36 check-runs all success.
+- Diff scope 94052256..b646b502: Wave C owned files + test-fixture fixes (PositionPersistenceTest/ArticleDaoSearchTest) + hosted-instrumented CI workflow + scripts/verify_instrumented_results.py + STATUS docs; no dependency/toml/build-file changes -> S37/D17 posture unchanged.
+- D5 manual-free assertion: MarkAsReadOnScrollPreference.kt:38 `val default = OFF` unchanged.
+- REDCHECK: 4 triples recorded in Wave C handoff (scope-key injectivity, neighbor sort fallback, sticky generation half 1, mark-read-on-open policy), each with mutation -> red lines -> green lines.
+- Local emulator infra t_d9844f3c / t_90b494be: superseded by hosted-CI emulator gate (t_e8fae1d9); not a remaining blocker.
+
 ## Pending
 
-- Wave C (reading reliability — read-state, positions, recently read, neighbors): card t_52fed684 (coder, idempotency `feedbucket-android-v1-wave-c`), created by Checkpoint C.
-- Checkpoint D (t_6fac9a17, default) gated on Wave C; carries the continuation responsibility.
-- Emulator-restore infra card t_d9844f3c (devops, host-only).
-- Waves D–H strictly serial: Wave C reviewed + integrated before Wave D dispatches (enforced by the checkpoint card chain).
+- Wave D (query, rules, saved searches, mutes — D7): card t_9c290a7e (coder, idempotency `feedbucket-android-v1-wave-d`), created by Checkpoint D; carries reviewer advisory (destination-specific state/render smoke with failure witness), D17 verbatim, memory guard, no-phone/no-live-web.
+- Checkpoint E (t_c0d13407, default) gated on Wave D; carries the continuation responsibility.
+- Waves E–H strictly serial: Wave D reviewed + integrated before Wave E dispatches (enforced by the checkpoint card chain).
