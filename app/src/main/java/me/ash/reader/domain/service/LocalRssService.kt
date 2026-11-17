@@ -92,7 +92,7 @@ constructor(
                                 }
 
                             val newArticles =
-                                articleDao.insertListIfNotExist(
+                                articleDao.insertListIfNotExistByIdentity(
                                     articles = fetchedArticles,
                                     feed = currentFeed,
                                 )

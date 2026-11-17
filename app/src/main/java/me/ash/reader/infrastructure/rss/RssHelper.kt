@@ -18,6 +18,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.article.Article
+import me.ash.reader.domain.model.article.ArticleIdentity
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.infrastructure.di.IODispatcher
@@ -26,7 +27,6 @@ import me.ash.reader.ui.ext.currentAccountId
 import me.ash.reader.ui.ext.decodeHTML
 import me.ash.reader.ui.ext.extractDomain
 import me.ash.reader.ui.ext.isFuture
-import me.ash.reader.ui.ext.spacerDollar
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.executeAsync
@@ -50,6 +50,40 @@ constructor(
         val feed: SyndFeed,
         val feedLink: String,
     )
+
+    companion object {
+
+        /**
+         * S6/S7/S20a ingest identity — pure function (unit-testable, no
+         * android dependencies). [guid] is the publisher guid
+         * (`SyndEntry.uri ?: SyndEntry.link`); [publishedAtMillis] is the
+         * future-guarded publisher date (NULL when the feed supplies none).
+         */
+        fun ingestArticleId(
+            accountId: Int,
+            feedUrl: String,
+            guid: String?,
+            link: String?,
+            title: String?,
+            author: String?,
+            publishedAtMillis: Long?,
+            summary: String?,
+            content: String?,
+        ): String = ArticleIdentity.articleId(
+            accountId = accountId,
+            feedUrl = feedUrl,
+            externalId = ArticleIdentity.externalId(
+                guid = guid,
+                link = link,
+                title = title,
+                url = link,
+                author = author,
+                published = publishedAtMillis,
+                summary = summary,
+                content = content,
+            ),
+        )
+    }
 
     @Throws(Exception::class)
     suspend fun searchFeed(feedLink: String): SearchFeedResult {
@@ -206,31 +240,40 @@ constructor(
             syndEntry.contents
                 .takeIf { it.isNotEmpty() }
                 ?.let { it.joinToString("\n") { it.value } }
-        //        Log.i(
-        //            "RLog",
-        //            "request rss:\n" +
-        //                    "name: ${feed.name}\n" +
-        //                    "feedUrl: ${feed.url}\n" +
-        //                    "url: ${syndEntry.link}\n" +
-        //                    "title: ${syndEntry.title}\n" +
-        //                    "desc: ${desc}\n" +
-        //                    "content: ${content}\n"
-        //        )
+        val guid = syndEntry.uri ?: syndEntry.link
+        val publisherDate =
+            (syndEntry.publishedDate ?: syndEntry.updatedDate)?.takeIf { !it.isFuture(preDate) }
+        val title = syndEntry.title.decodeHTML() ?: feed.name
+        val link = syndEntry.link ?: ""
+        val raw = content ?: desc ?: ""
+        val short = Readability.parseToText(desc ?: content, syndEntry.link).take(280)
         return Article(
-            id = accountId.spacerDollar(UUID.randomUUID().toString()),
+            // S6: deterministic id — stable across re-syncs/imports for the
+            // same (feedUrl, externalId). guid = uri ?: link (S7 identity).
+            id = ingestArticleId(
+                accountId = accountId,
+                feedUrl = feed.url,
+                guid = guid,
+                link = link,
+                title = title,
+                author = syndEntry.author,
+                publishedAtMillis = publisherDate?.time,
+                summary = short,
+                content = raw,
+            ),
             accountId = accountId,
             feedId = feed.id,
-            date =
-                (syndEntry.publishedDate ?: syndEntry.updatedDate)?.takeIf { !it.isFuture(preDate) }
-                    ?: preDate,
-            title = syndEntry.title.decodeHTML() ?: feed.name,
+            date = publisherDate ?: preDate,
+            title = title,
             author = syndEntry.author,
-            rawDescription = content ?: desc ?: "",
-            shortDescription = Readability.parseToText(desc ?: content, syndEntry.link).take(280),
-            //            fullContent = content,
+            rawDescription = raw,
+            shortDescription = short,
             img = findThumbnail(syndEntry) ?: findThumbnail(content ?: desc),
-            link = syndEntry.link ?: "",
+            link = link,
             updateAt = preDate,
+            guid = guid ?: "",
+            // S20a: publisher-date provenance; never re-minted from sync time.
+            publishedAt = publisherDate,
         )
     }
 

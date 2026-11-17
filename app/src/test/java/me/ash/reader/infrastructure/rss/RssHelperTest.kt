@@ -87,4 +87,54 @@ class RssHelperTest {
         """
         Assert.assertEquals(imageUrlString, rssHelper.findThumbnail(case))
     }
+
+    private fun ingest(guid: String?, link: String?, published: Long? = 42L): String =
+        RssHelper.ingestArticleId(
+            accountId = 1,
+            feedUrl = "https://example.com/feed.xml",
+            guid = guid,
+            link = link,
+            title = "Title",
+            author = "auth",
+            publishedAtMillis = published,
+            summary = "sum",
+            content = "body",
+        )
+
+    @Test
+    fun testIngestArticleIdIsDeterministicAndPrefersGuid() {
+        val first = ingest("tag:ex,2023:1", "https://ex.example/1")
+        val second = ingest("tag:ex,2023:1", "https://ex.example/1")
+        Assert.assertEquals(first, second)
+        Assert.assertTrue(first.startsWith("1$"))
+        // Same guid, different link -> same id (guid wins in the fallback chain).
+        Assert.assertEquals(first, ingest("tag:ex,2023:1", "https://ex.example/other"))
+        // Different feed -> different id.
+        val otherFeed = RssHelper.ingestArticleId(
+            accountId = 1,
+            feedUrl = "https://other.example/feed.xml",
+            guid = "tag:ex,2023:1",
+            link = "https://ex.example/1",
+            title = "Title",
+            author = "auth",
+            publishedAtMillis = 42L,
+            summary = "sum",
+            content = "body",
+        )
+        Assert.assertNotEquals(first, otherFeed)
+    }
+
+    @Test
+    fun testIngestArticleIdFallsBackToLinkThenHash() {
+        val byLink = ingest(null, "https://ex.example/1")
+        val byLinkBlankGuid = ingest("", "https://ex.example/1")
+        Assert.assertEquals(byLink, byLinkBlankGuid)
+        // No guid, no link -> hash of the joined content fields (deterministic).
+        val hashed = ingest("", "")
+        val hashedAgain = ingest(null, "")
+        Assert.assertEquals(hashed, hashedAgain)
+        Assert.assertNotEquals(byLink, hashed)
+        // Publisher date participates in the hash fallback.
+        Assert.assertNotEquals(hashed, ingest("", "", 43L))
+    }
 }
