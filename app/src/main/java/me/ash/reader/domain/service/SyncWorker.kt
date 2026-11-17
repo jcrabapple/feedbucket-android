@@ -18,6 +18,7 @@ constructor(
     private val rssService: RssService,
     private val readerCacheHelper: ReaderCacheHelper,
     private val workManager: WorkManager,
+    private val accountService: AccountService,
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
@@ -34,23 +35,38 @@ constructor(
                 rssService.get().clearKeepArchivedArticles().forEach {
                     readerCacheHelper.deleteCacheFor(articleId = it.id)
                 }
-                workManager
-                    .beginUniqueWork(
-                        uniqueWorkName = POST_SYNC_WORK_NAME,
-                        existingWorkPolicy = ExistingWorkPolicy.KEEP,
-                        OneTimeWorkRequestBuilder<ReaderWorker>()
-                            .addTag(READER_TAG)
-                            .addTag(ONETIME_WORK_TAG)
-                            .setBackoffCriteria(
-                                backoffPolicy = BackoffPolicy.EXPONENTIAL,
-                                backoffDelay = 30,
-                                timeUnit = TimeUnit.SECONDS,
-                            )
-                            .build(),
-                    )
-                    .then(OneTimeWorkRequestBuilder<WidgetUpdateWorker>().build())
-                    .enqueue()
+                enqueuePostSyncChain(accountService.getAccountById(accountId))
             }
+    }
+
+    /**
+     * S27a/S28a — post-sync chain: ReaderWorker (auto-extraction) →
+     * DownloadWorker (pending downloads under UNMETERED; +charging when the
+     * account requires it — constraint waiting renders ENQUEUED, an honest
+     * "Waiting for Wi-Fi", never failed) → WidgetUpdateWorker.
+     */
+    private fun enqueuePostSyncChain(account: Account?) {
+        workManager
+            .beginUniqueWork(
+                uniqueWorkName = POST_SYNC_WORK_NAME,
+                existingWorkPolicy = ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<ReaderWorker>()
+                    .addTag(READER_TAG)
+                    .addTag(ONETIME_WORK_TAG)
+                    .setBackoffCriteria(
+                        backoffPolicy = BackoffPolicy.EXPONENTIAL,
+                        backoffDelay = 30,
+                        timeUnit = TimeUnit.SECONDS,
+                    )
+                    .build(),
+            )
+            .then(
+                DownloadWorker.bulkRequest(
+                    requiresCharging = account?.syncOnlyWhenCharging?.value == true
+                )
+            )
+            .then(OneTimeWorkRequestBuilder<WidgetUpdateWorker>().build())
+            .enqueue()
     }
 
     companion object {

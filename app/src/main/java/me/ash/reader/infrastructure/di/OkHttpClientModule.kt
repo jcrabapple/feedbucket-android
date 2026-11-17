@@ -29,6 +29,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import me.ash.reader.BuildConfig
+import me.ash.reader.domain.model.download.DownloadPolicy
 import okhttp3.Cache
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -42,10 +43,16 @@ import java.security.Principal
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.inject.Qualifier
 import javax.inject.Singleton
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509KeyManager
 import javax.net.ssl.X509TrustManager
+
+/** S28 — dedicated client for article downloads (connect 15s/read 30s/call 120s). */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class DownloadHttpClient
 
 /**
  * Provides singleton [OkHttpClient] for the application.
@@ -64,6 +71,27 @@ object OkHttpClientModule {
     ).newBuilder()
         .addNetworkInterceptor(UserAgentInterceptor)
         .build()
+
+    /**
+     * S28 — dedicated download client with the exact download timeouts
+     * (connect 15 s, read 30 s, call 120 s). No HTTP cache: downloaded bytes
+     * belong to the durable store, not the evictable cache.
+     */
+    @Provides
+    @Singleton
+    @DownloadHttpClient
+    fun provideDownloadOkHttpClient(
+        @ApplicationContext context: Context,
+    ): OkHttpClient =
+        cachingHttpClient(
+            context = context,
+            cacheDirectory = null,
+            connectTimeoutSecs = DownloadPolicy.CONNECT_TIMEOUT_SECS,
+            readTimeoutSecs = DownloadPolicy.READ_TIMEOUT_SECS,
+        ).newBuilder()
+            .callTimeout(DownloadPolicy.CALL_TIMEOUT_SECS, TimeUnit.SECONDS)
+            .addNetworkInterceptor(UserAgentInterceptor)
+            .build()
 }
 
 fun cachingHttpClient(
