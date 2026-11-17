@@ -87,6 +87,8 @@ class AndroidApp : Application(), Configuration.Provider {
 
     @Inject lateinit var diffMapHolder: DiffMapHolder
 
+    @Inject lateinit var downloadService: me.ash.reader.domain.service.DownloadService
+
     /**
      * When the application startup.
      * 1. Set the uncaught exception handler
@@ -104,6 +106,10 @@ class AndroidApp : Application(), Configuration.Provider {
             accountInit()
             workerInit()
             checkUpdate()
+            // S27a/§8 — startup reconciliation: orphan `downloading` rows
+            // reset to pending + re-enqueued once, orphan staging dirs GC'd,
+            // corrupt `ready` dirs demoted to failed(storage).
+            downloadService.reconcileOnStart()
         }
         Coil.setImageLoader(imageLoader)
     }
