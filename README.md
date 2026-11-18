@@ -1,141 +1,117 @@
 <div align="center">
-    <img width="200" height="200" style="display: block; border: 1px solid #f5f5f5; border-radius: 9999px;" src="https://raw.githubusercontent.com/ReadYouApp/ReadYou/main/fastlane/metadata/android/en-US/images/icon.png">
-</div>
-
-<br>
-<br>
-<br>
-
-<div align="center">
-    <img alt="GitHub" src="https://img.shields.io/github/license/ReadYouApp/ReadYou?color=c3e7ff&style=flat-square">
-    <a target="_blank" href="https://github.com/ReadYouApp/ReadYou/releases">
-        <img alt="Version" src="https://img.shields.io/github/v/release/ReadYouApp/ReadYou?color=c3e7ff&label=version&style=flat-square">
-    </a>
-    <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/ReadYouApp/ReadYou?color=c3e7ff&style=flat-square">
-    <br>
-    <a target="_blank" href="https://t.me/ReadYouApp">
-        <img alt="Telegram" src="https://img.shields.io/badge/Telegram-ReadYouApp-c3e7ff?logo=telegram&style=flat-square">
-    </a>
-    <a target="_blank" href="https://www.figma.com/file/ViBW8GbUgkTMmK6a80h8X1/Read-You?node-id=7028%3A23673">
-        <img alt="Figma" src="https://img.shields.io/badge/Figma-ReadYou-c3e7ff?logo=figma&style=flat-square">
-    </a>
-</div>
-
-<div align="center">
+    <img width="160" height="160" alt="FeedBucket icon" src="docs/creative/icon/feedbucket-store-512.png">
     <h1>FeedBucket</h1>
-    <p>A standalone, no-account local Android RSS reader, forked from <a target="_blank" href="https://github.com/ReadYouApp/ReadYou">Read You</a> (upstream baseline <code>d2b979cc</code>, version 0.16.2 lineage).</p>
-    <p>FeedBucket keeps Read You's Kotlin/Compose foundation and GPL-3.0 license; upstream copyright and license notices are preserved in the source and in <a target="_blank" href="LICENSE">LICENSE</a>. Bundled Google Sans Flex font is licensed under SIL OFL 1.1 (see <code>app/src/main/res/raw/ofl_google_sans_flex.txt</code>).</p>
-    <p>Development branch: <code>feedbucket-native</code>. Application ID: <code>us.snakepit.feedbucket</code> (debug: <code>us.snakepit.feedbucket.debug</code>).</p>
+    <p>A standalone, local-first Android RSS reader. No account, no server, no sync.</p>
+    <img alt="License" src="https://img.shields.io/github/license/jcrabapple/feedbucket-android?color=c3e7ff&style=flat-square">
+    <a target="_blank" href="https://github.com/jcrabapple/feedbucket-android/releases">
+        <img alt="Version" src="https://img.shields.io/github/v/release/jcrabapple/feedbucket-android?color=c3e7ff&label=version&style=flat-square">
+    </a>
 </div>
 
-<div align="center">
-    <h1>Read You</h1>
-    <p>An Android RSS reader presented in <a target="_blank" href="https://m3.material.io/">Material You</a> style.</p>
-    <p>English&nbsp;&nbsp;|&nbsp;&nbsp;
-    <a target="_blank" href="https://github.com/ReadYouApp/ReadYou/blob/main/README-de.md">Deutsch</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-    <a target="_blank" href="https://github.com/ReadYouApp/ReadYou/blob/main/README-zh-CN.md">简体中文</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-    <a target="_blank" href="https://github.com/ReadYouApp/ReadYou/blob/main/README-zh-TW.md">繁體中文 (Outdated)</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-    <a target="_blank" href="https://github.com/ReadYouApp/ReadYou/blob/main/README-fa.md">فارسی (Outdated)</a></p>
-    <br/>
-    <br/>
-    <img src="https://raw.githubusercontent.com/ReadYouApp/ReadYou/main/fastlane/metadata/android/en-US/images/phoneScreenshots/startup.png" width="19.2%" alt="startup" />
-    <img src="https://raw.githubusercontent.com/ReadYouApp/ReadYou/main/fastlane/metadata/android/en-US/images/phoneScreenshots/feeds.png" width="19.2%" alt="feeds" />
-    <img src="https://raw.githubusercontent.com/ReadYouApp/ReadYou/main/fastlane/metadata/android/en-US/images/phoneScreenshots/flow.png" width="19.2%" alt="flow" />
-    <img src="https://raw.githubusercontent.com/ReadYouApp/ReadYou/main/fastlane/metadata/android/en-US/images/phoneScreenshots/read.png" width="19.2%" alt="read" />
-    <img src="https://raw.githubusercontent.com/ReadYouApp/ReadYou/main/fastlane/metadata/android/en-US/images/phoneScreenshots/settings.png" width="19.2%" alt="settings" />
-    <br/>
-    <br/>
-</div>
+<p align="center">
+    <img src="docs/screenshots/feeds.png" width="19%" alt="Feeds">
+    <img src="docs/screenshots/articles.png" width="19%" alt="Article list">
+    <img src="docs/screenshots/reader.png" width="19%" alt="Reader">
+    <img src="docs/screenshots/rules.png" width="19%" alt="Rules">
+    <img src="docs/screenshots/downloads.png" width="19%" alt="Downloads">
+</p>
 
-## Features
+FeedBucket is a fork of **[Read You](https://github.com/ReadYouApp/ReadYou)**, an Android RSS reader by **Ash** (ReadYouApp). It keeps Read You's Kotlin and Jetpack Compose foundation and changes what the app is for: a single-device reader that works offline, keeps its own state reliably, and imports your existing FeedBucket web data. It is pre-1.0 and built for personal use first.
 
-**Read You** is an Android RSS reader presented in [Material You](https://m3.material.io/) style.
+## Credit
 
-The following are the progress made so far and the goals to be worked on in the near future:
+FeedBucket would not exist without **Read You** and its developer, **Ash** ([ReadYouApp/ReadYou](https://github.com/ReadYouApp/ReadYou), [ash7.io](https://ash7.io)). Read You is licensed GPL-3.0, and so is FeedBucket. Upstream copyright and license notices are kept in the source and in [LICENSE](LICENSE).
 
-- [x] Subscribe to RSS links
-- [x] Import or export OPML files
-- [x] Notification of new articles
-- [x] Article readability optimization
-- [x] Full content parse for original articles
-- [x] Multi-account
-- [x] Read aloud
-- [ ] Android widget
-- [ ] ...
+FeedBucket is not affiliated with or endorsed by the Read You project. If you use Read You, support its developer through the upstream project. The sponsorship links were removed from this fork.
 
-## Integration
+The rest of the upstream credits, including MusicYou (design inspiration and the Monet engine by Kyant0), JetBrains, Weblate, and the open-source libraries Read You builds on, are listed at the end of this file.
 
-**Read You** integrates with some of third-party service APIs to support you in using your existing cloud accounts as data sources.
+## What FeedBucket does
 
-- [x] Fever
-- [x] Google Reader
-- [x] FreshRSS
-- [ ] Miniflux
-- [ ] Tiny Tiny RSS
-- [ ] Inoreader
-- [ ] Feedly
-- [ ] Feedbin
-- [ ] ...
+- **Subscriptions and feeds:** add RSS and Atom feeds, group them, and import or export OPML. Inherited from Read You.
+- **Read state you can trust:** read and unread state persists across restarts. Reading positions are restored when you return to a feed. There is a recently-read list with next and previous navigation.
+- **Offline reading:** download articles with their text and images, stored on the device. Limits: 2 MiB of text and up to 10 MiB of images per article, 1 GiB total. Offline articles render in a locked-down WebView with JavaScript off and no outside requests.
+- **Offline search:** full-text search across cached articles. Each account shows how much of its content is indexed.
+- **Rules, mutes, and saved searches:** rules mark matching items read or starred. Mutes hide matches. Each change shows a preview first, can be applied to existing articles, and is recorded in an apply ledger that you can undo.
+- **Updated articles:** when a publisher edits a post, FeedBucket flags it, keeps the first version, and shows a word-level diff. You can turn update tracking off per feed.
+- **Migration from FeedBucket web:** import a FeedBucket v1 export package (or a raw database copy) through a preview that shows counts before anything is written. Imports run on the device, check for secrets before writing, and can be removed cleanly afterward.
+- **Provider support inherited from Read You:** Fever and the Google Reader protocol (FreshRSS and compatible servers). These have not been re-tested in FeedBucket.
 
-## Download
+## What FeedBucket changes from Read You
 
-[<img src="https://s1.ax1x.com/2023/01/12/pSu1a36.png" alt="Get it on GitHub" height="80">](https://github.com/ReadYouApp/ReadYou/releases)
-[<img src="https://s1.ax1x.com/2023/01/12/pSnTZ0f.png"
-     alt="Get it on Telegram Channel"
-     height="80">](https://t.me/ReadYouApp)
-[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
-     alt="Get it on F-Droid"
-     height="80">](https://f-droid.org/packages/me.ash.reader/)
+**Added**
 
-F-Droid releases can not upgrade to other releases and it is compiled, signed and distributed uniformly by [F-Droid](https://f-droid.org/docs/FAQ_-_General/).
+- Offline downloads with size caps, a storage page, and offline full-text search.
+- Read-state and reading-position reliability.
+- Rules, mutes, saved searches, and the apply ledger.
+- Article update detection and word-level diffs.
+- The FeedBucket migration importer, and OPML import with duplicate handling and counts.
+- Material 3 Expressive UI with a static petrol and ink palette, reduced-motion support, and 48dp touch targets. Dynamic color is an opt-in and is off by default.
+- `FeedDetail` and `GroupDetail` screens.
 
-## Nightly
+**Removed**
 
-We offer Nightly versions for testing purposes. These versions include the latest features and improvements but may not be as stable as our regular releases. Please note that Nightly builds might have bugs and are not recommended for everyday use.
+- The Tips & Support page and its sponsor dialog. The licenses screen and the manual update check are now in Settings.
+- Upstream's release-signing keystores. FeedBucket's release key is kept outside the repository.
+- Read You's update channel. The app checks only FeedBucket releases (see below).
 
-You can download the Nightly version from the following link:
+**Not implemented**
 
-<a target="_blank" href="https://github.com/ReadYouApp/ReadYou/actions/workflows/build_commit.yaml">Check Nightly Builds</a>
+- Feedly and Inoreader are placeholders in Read You too, and they are not implemented here.
+- Miniflux, Tiny Tiny RSS, and Feedbin are not implemented here.
 
-Choose the latest workflow from the GitHub Actions page and download the artifacts from the workflow's summary page (You may require logging in to GitHub).
+## Updates
 
-**Remember to back up your data before trying the Nightly version in case of any issues.**
+FeedBucket checks GitHub for releases tagged `feedbucket-vX.Y.Z` on this repository. It accepts only a `FeedBucket-X.Y.Z.apk` asset with a matching `.sha256` file. It verifies the SHA-256 hash before handing the APK to the installer, and it never checks for updates in debug builds.
 
-## Sponsorship
+Releases are signed with FeedBucket's release key. An APK signed with a different key will not install over an existing one.
 
-**Read You** is a free open source software that benefits from the open source community and every user can enjoy it's full functionality for free, so if you appreciate my current work, you can buy me a cup of coffee.☕️
+## Install
 
-[<img src="https://s1.ax1x.com/2023/01/12/pSnHqpQ.png" alt="donate" height="80">](https://ash7.io/sponsor)
+Download the APK from the [latest release](https://github.com/jcrabapple/feedbucket-android/releases/latest) and check it against its `.sha256` file:
 
-Thanks for all the love and support.❤️
+```shell
+sha256sum -c FeedBucket-0.1.0.apk.sha256
+```
 
-## Localization
-
-Thank you to each of the **Read You** translators, and if you would like to contribute, please submit a translation via [Weblate](https://hosted.weblate.org/engage/readyou/).
-
-[<img src="https://hosted.weblate.org/widgets/readyou/-/horizontal-auto.svg" alt="" />](https://hosted.weblate.org/engage/readyou/)
+Application IDs: `us.snakepit.feedbucket` (release) and `us.snakepit.feedbucket.debug` (debug, installs side by side).
 
 ## Build
 
-> Welcome to open a [pull request](https://github.com/ReadYouApp/ReadYou/pulls). [GitHub Actions](https://github.com/ReadYouApp/ReadYou/actions) automatically packages all flavors of apk files for each commit.
+Clone the repo and open it in Android Studio, or build from the command line:
 
-**Read You** is based on [Jetpack Compose](https://developer.android.com/jetpack/compose) toolkit for building Android's native UI.
+```shell
+git clone https://github.com/jcrabapple/feedbucket-android.git
+cd feedbucket-android
+./gradlew :app:assembleGithubDebug
+```
 
-1. First you need to get the source code of **Read You**.
+Release builds need a private keystore. Point `FEEDBUCKET_KEYSTORE_PROPERTIES` at a `keystore.properties` file outside the repo, or place one at the repo root (gitignored). Without it, release tasks fail on purpose, so an unsigned release is never produced by accident.
 
-   ```shell
-   git clone https://github.com/ReadYouApp/ReadYou.git
-   ```
+Development branch: `feedbucket-native`.
 
-2. Then open it via [Android Studio (latest version)](https://developer.android.com/studio).
+## Status and limits
 
-3. When you click the `▶ Run` button, it will be built and run automatically.
+- Pre-1.0. CI runs the instrumented suite on API 35 and API 36 emulators. Manual testing has been on an API 26 emulator and one physical phone (Galaxy S26). Other devices are untested.
+- Not on Google Play or F-Droid.
+- New FeedBucket strings are English-only. Read You's translations of its own strings still ship, and some are out of date.
+- The translated READMEs in this repository (`README-*.md`) describe upstream Read You, not FeedBucket.
 
-    > In case of lag, please select Release version build.
+## License
+
+GNU GPL v3.0. Copyright notices for Read You are retained, and FeedBucket's changes are under the same license. See [LICENSE](LICENSE).
+
+The bundled Google Sans Flex font is licensed under the SIL Open Font License 1.1 (see `app/src/main/res/raw/ofl_google_sans_flex.txt`).
 
 ## Credits
 
-### Open Source Projects
+### Upstream
+
+- [Read You](https://github.com/ReadYouApp/ReadYou) by Ash (ReadYouApp), the upstream project this fork is based on.
+- Thanks to **@Kyant0** for the design inspiration and the Monet engine. See [MusicYou](https://github.com/Kyant0/MusicYou).
+- Thanks to **JetBrains** for free open-source IDE licenses, and to **Weblate** for hosting Read You's translations.
+
+### Open source projects
 
 - [MusicYou](https://github.com/Kyant0/MusicYou)
 - [ParseRSS](https://github.com/muhrifqii/ParseRSS)
@@ -149,21 +125,3 @@ Thank you to each of the **Read You** translators, and if you would like to cont
 - [besticon](https://github.com/mat/besticon)
 - [Jiffy Reader](https://github.com/ansh/jiffyreader.com)
 - ...
-
-### Special Thanks
-
-[<img src="https://avatars.githubusercontent.com/u/76829190?v=4" width="180" height="180" style="display: block; border: 1px solid #f5f5f5; border-radius: 9999px;"/>](https://github.com/Kyant0)
-
-Thanks to **@Kyant0** for the design inspiration and Monet engine implementation for **Read You**.
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.png" width="200" alt="Copyright © 2000-2023 JetBrains s.r.o. JetBrains and the JetBrains logo are registered trademarks of JetBrains s.r.o."/>](https://www.jetbrains.com/)
-
-Thanks to **JetBrains** for allocating free open-source licences for IDEs for **Read You**.
-
-[<img src="https://hosted.weblate.org/widgets/readyou/-/287x66-white.png"  width="200"/>](https://hosted.weblate.org/engage/readyou/)
-
-Thanks to **Weblate** for providing free hosting of open source projects for **Read You**.
-
-## License
-
-GNU GPL v3.0 © [Read You](https://github.com/ReadYouApp/ReadYou/blob/main/LICENSE)
