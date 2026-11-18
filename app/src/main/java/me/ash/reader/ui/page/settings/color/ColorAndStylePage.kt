@@ -210,11 +210,12 @@ fun ColorAndStylePage(
                     val dynamicColorPref = LocalDynamicColor.current
                     val dynamicColorSupported =
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    val offLabel = stringResource(R.string.off)
                     SettingItem(
                         title = stringResource(R.string.dynamic_color),
                         desc =
                             stringResource(R.string.dynamic_color_desc) +
-                                if (dynamicColorSupported) "" else " (${context.getString(R.string.off)})",
+                                if (dynamicColorSupported) "" else " ($offLabel)",
                         separatedActions = true,
                         onClick = {},
                     ) {
