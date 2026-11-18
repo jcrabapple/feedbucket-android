@@ -107,8 +107,6 @@
     <string name="languages">Język</string>
     <string name="help_translate">Pomóż w tłumaczeniu</string>
     <string name="use_device_languages">Zgodny z systemem</string>
-    <string name="tips_and_support">Porady i wsparcie</string>
-    <string name="tips_and_support_desc">O aplikacji, sponsorowanie, licencje</string>
     <string name="welcome">Witamy</string>
     <string name="tos_tips">Aby kontynuować, przeczytaj i zaakceptuj warunki korzystania z usługi Read You oraz politykę prywatności.</string>
     <string name="browse_tos_tips">Zapoznaj się z <i><u>warunkami korzystania z  usługi i polityką prywatności</u></i></string>
@@ -135,7 +133,6 @@
     <string name="feeds_page">Strona kanałów</string>
     <string name="flow_page">Strona flow</string>
     <string name="reading_page">Czytnik artykułów</string>
-    <string name="sponsor">Wesprzyj</string>
     <string name="open_source_licenses">Licencje open source</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Lista zmian</string>
@@ -314,8 +311,6 @@
     <string name="read_aloud">Czytaj na głos</string>
     <string name="only_available_on_webview">Dostępne tylko podczas korzystania z silnika renderującego treść WebView</string>
     <string name="mark_as_read_on_scroll">Oznacz jako przeczytane podczas przewijania</string>
-    <string name="become_a_sponsor">Zostań sponsorem</string>
-    <string name="sponsor_desc">Tworzymy i utrzymujemy tę darmową, otwartą aplikację w naszym wolnym czasie. Jeśli Ci się podoba, rozważ wsparcie nas małą darowizną! ☕️</string>
     <string name="troubleshooting_desc">Raport o błędzie, preferencje aplikacji</string>
     <string name="toggle_starred">Przełącz wyróżnione</string>
     <string name="hide_empty_groups">Ukryj puste grupy</string>
@@ -359,4 +354,5 @@
     <string name="group_configuration_description">Skonfiguruj „%1$s” dla kanałów w „%2$s”</string>
     <string name="disabled">Wyłączone</string>
     <string name="enabled">Włączone</string>
+    <string name="tips_and_support">Porady i wsparcie</string>
 </resources>

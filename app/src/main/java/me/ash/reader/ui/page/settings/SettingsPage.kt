@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.DownloadForOffline
 import androidx.compose.material.icons.outlined.ImportExport
@@ -17,7 +18,7 @@ import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Rule
-import androidx.compose.material.icons.outlined.TipsAndUpdates
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
@@ -40,7 +41,11 @@ import me.ash.reader.ui.component.base.Banner
 import me.ash.reader.ui.component.base.DisplayText
 import me.ash.reader.ui.component.base.FeedbackIconButton
 import me.ash.reader.ui.component.base.RYScaffold
+import me.ash.reader.ui.ext.DataStoreKey
+import me.ash.reader.ui.ext.dataStore
 import me.ash.reader.ui.ext.getCurrentVersion
+import me.ash.reader.ui.ext.put
+import me.ash.reader.ui.ext.showToast
 import me.ash.reader.ui.page.settings.tips.UpdateDialog
 import me.ash.reader.ui.page.settings.tips.UpdateViewModel
 import me.ash.reader.ui.theme.palette.onLight
@@ -55,7 +60,7 @@ fun SettingsPage(
     navigateToInteraction: () -> Unit,
     navigateToLanguages: () -> Unit,
     navigateToTroubleshooting: () -> Unit,
-    navigateToTipsAndSupport: () -> Unit,
+    navigateToLicenseList: () -> Unit,
     navigateToRules: () -> Unit,
     navigateToDownloads: () -> Unit,
     navigateToMigration: () -> Unit,
@@ -64,6 +69,8 @@ fun SettingsPage(
     val newVersion = LocalNewVersionNumber.current
     val skipVersion = LocalSkipVersionNumber.current
     val currentVersion by remember { mutableStateOf(context.getCurrentVersion()) }
+    val checkingUpdatesToast = stringResource(R.string.checking_updates)
+    val isLatestVersionToast = stringResource(R.string.is_latest_version)
 
     RYScaffold(
         containerColor = MaterialTheme.colorScheme.surface onLight MaterialTheme.colorScheme.inverseOnSurface,
@@ -177,10 +184,31 @@ fun SettingsPage(
                 }
                 item {
                     SelectableSettingGroupItem(
-                        title = stringResource(R.string.tips_and_support),
-                        desc = stringResource(R.string.tips_and_support_desc),
-                        icon = Icons.Outlined.TipsAndUpdates,
-                        onClick = navigateToTipsAndSupport
+                        title = stringResource(R.string.open_source_licenses),
+                        icon = Icons.Outlined.Balance,
+                        onClick = navigateToLicenseList
+                    )
+                }
+                item {
+                    SelectableSettingGroupItem(
+                        title = stringResource(R.string.check_for_updates),
+                        icon = Icons.Outlined.Refresh,
+                        onClick = {
+                            updateViewModel.checkUpdate(
+                                {
+                                    context.showToast(checkingUpdatesToast)
+                                    context.dataStore.put(
+                                        DataStoreKey.skipVersionNumber,
+                                        ""
+                                    )
+                                },
+                                {
+                                    if (!it) {
+                                        context.showToast(isLatestVersionToast)
+                                    }
+                                }
+                            )
+                        }
                     )
                 }
                 item {

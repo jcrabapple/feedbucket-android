@@ -92,7 +92,6 @@
     <string name="feeds_page">صفحة الموجزات</string>
     <string name="flow_page">صفحة الدفق</string>
     <string name="reading_page">صفحة القراية</string>
-    <string name="sponsor">موّل</string>
     <string name="change_log">شو فيه جديد؟</string>
     <string name="update">تجديد</string>
     <string name="skip_this_version">أفي هيدا الڤيرجن</string>
@@ -215,8 +214,6 @@
     <string name="three_days">3 إيام</string>
     <string name="close">سكر</string>
     <string name="get_new_updates_desc">فيه الڤرجن الجديد %1$s</string>
-    <string name="tips_and_support">تعليمات و دعم</string>
-    <string name="tips_and_support_desc">معلومات، و الترخيصات تبع المصادر المفتوحة</string>
     <string name="browse_tos_tips">تصفّح <i><u>شروط الخدمة و سياسة الخصوصيَّة</u></i></string>
     <string name="appearance">الشكل</string>
     <string name="upper_case">كاپيتل</string>
@@ -310,6 +307,5 @@
     <string name="about">عن</string>
     <string name="toolbars">شريط الأدوات</string>
     <string name="mark_as_read_on_scroll">علّم إنه منرقرا عال تمرير</string>
-    <string name="become_a_sponsor">صير سپانسر</string>
-    <string name="sponsor_desc">نحن منعمل و من جدد هيدا الآپ المجاني و مفتوح المصدر برات سعات العمل تبعنا.إذا بيعجبك الآپ، پليز فكر ب دعمنا ب تبرع زغير! ☕️</string>
+    <string name="tips_and_support">تعليمات و دعم</string>
 </resources>

@@ -20,7 +20,6 @@
     <string name="title">Tutlu</string>
     <string name="date_at_time">%1$s la %2$s</string>
     <string name="interaction_desc">Pagina inițială, feedback haptic</string>
-    <string name="tips_and_support">Sfaturi și asistență</string>
     <string name="custom_tabs">Forțează CustomTabs</string>
     <string name="only_on_wifi">Sincronizează doar prin Wi-Fi</string>
     <string name="password">Parolă</string>
@@ -157,7 +156,6 @@
     <string name="local">Local</string>
     <string name="services">Servicii</string>
     <string name="text_desc">Mărime font, spațiere litere, aliniere</string>
-    <string name="sponsor">Sponsor</string>
     <string name="for_3_days">3 zile</string>
     <string name="deny">Refuză</string>
     <string name="align_end">Aliniază la dreapta</string>
@@ -259,10 +257,10 @@
     <string name="system_default">Sistem</string>
     <string name="clear_articles_in_group_toast">S-au curățat toate articolele arhivate din grupul „%1$s”</string>
     <string name="reading_fonts">Fonturi citire</string>
-    <string name="tips_and_support_desc">Despre, licențe open source</string>
     <string name="mark_as_unread">Marchează ca necitit</string>
     <string name="change_log">Jurnalul modificărilor</string>
     <string name="alignment">Aliniament</string>
     <string name="clear_articles">Șterge articolelele</string>
     <string name="rate_limit">Rata de solicitare este limitată</string>
+    <string name="tips_and_support">Sfaturi și asistență</string>
 </resources>

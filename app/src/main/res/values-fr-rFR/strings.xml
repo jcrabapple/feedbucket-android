@@ -104,8 +104,6 @@
     <string name="languages">Langues</string>
     <string name="help_translate">Aidez-nous à traduire</string>
     <string name="use_device_languages">Utiliser la langue système</string>
-    <string name="tips_and_support">Aide et assistance</string>
-    <string name="tips_and_support_desc">"À propos, sponsor,  Licences Open Source"</string>
     <string name="welcome">Bienvenue</string>
     <string name="tos_tips">Veuillez lire et accepter les conditions d’utilisation et la politique de confidentialité de Read You.</string>
     <string name="browse_tos_tips">Lire les <i><u>conditions d’utilisation et la politique de confidentialité</u></i></string>
@@ -132,7 +130,6 @@
     <string name="feeds_page">Page des flux</string>
     <string name="flow_page">Page des articles</string>
     <string name="reading_page">Page de lecture</string>
-    <string name="sponsor">Sponsor</string>
     <string name="open_source_licenses">Licences Open Source</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Nouveautés</string>
@@ -315,11 +312,9 @@
     <string name="all_open_in_browser_tips">Ouvrir tous les articles du groupe « %1$s » à l\'aide du navigateur</string>
     <string name="all_deny_open_in_browser_toast">Plus d\'ouverture de tous les articles du groupe « %1$s » à l\'aide du navigateur</string>
     <string name="mark_as_read_on_scroll">Marquer comme lu lors du défilement</string>
-    <string name="become_a_sponsor">Devenir un sponsor</string>
     <string name="toolbars">Barres d\'outil</string>
     <string name="latest">Plus récents d\'abord</string>
     <string name="earliest">Plus anciens d\'abord</string>
-    <string name="sponsor_desc">Nous construisons et maintenons cette application gratuite et open-source pendant notre temps libre. Si vous l\'appréciez, n\'hésitez pas à nous soutenir en faisant un petit don ! ☕️</string>
     <string name="sort_unread_articles">Tri des articles non lus</string>
     <string name="open_in_browser">Ouvrir dans le navigateur</string>
     <string name="client_certificate">Certificat client (optionnel)</string>
@@ -356,4 +351,5 @@
     <string name="enable">Activer</string>
     <string name="disable">Désactiver</string>
     <string name="group_configuration_description">Configurer \"%1$s\" pour les flux dans \"%2$s\"</string>
+    <string name="tips_and_support">Aide et assistance</string>
 </resources>

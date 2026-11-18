@@ -104,8 +104,6 @@
     <string name="languages">Idiomas</string>
     <string name="help_translate">Ayuda para traducir</string>
     <string name="use_device_languages">Usar idioma del dispositivo</string>
-    <string name="tips_and_support">Consejos y ayuda</string>
-    <string name="tips_and_support_desc">Acerca de, patrocinio, licencias de código abierto</string>
     <string name="welcome">Bienvenido</string>
     <string name="tos_tips">Para continuar, lee y acepta las condiciones del servicio y la política de privacidad de Read You.</string>
     <string name="browse_tos_tips">Navegue por los <i><u>términos de servicio y la política de privacidad</u></i></string>
@@ -132,7 +130,6 @@
     <string name="feeds_page">Página de fuentes</string>
     <string name="flow_page">Página de flujo</string>
     <string name="reading_page">Página de lectura</string>
-    <string name="sponsor">Patrocinar</string>
     <string name="open_source_licenses">Licencias de código abierto</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Registro de cambios</string>
@@ -314,8 +311,6 @@
     <string name="only_available_on_webview">Solo disponible cuando se usa el renderizador de contenido WebView</string>
     <string name="about">Acerca de</string>
     <string name="mark_as_read_on_scroll">Marcar como leído al desplazarse</string>
-    <string name="become_a_sponsor">Conviértete en patrocinador</string>
-    <string name="sponsor_desc">Construimos y mantenemos esta aplicación gratuita y de código abierto en nuestro tiempo libre. Si la disfrutas, ¡considera apoyarnos con una pequeña donación! ☕️</string>
     <string name="toolbars">Barras de herramientas</string>
     <string name="client_certificate">Certificado de cliente (opcional)</string>
     <string name="hide_empty_groups">Ocultar grupos vacíos</string>
@@ -358,4 +353,5 @@
     <string name="disable">Deshabilitar</string>
     <string name="notifications_desc">Recibe notificaciones cuando haya artículos nuevos sin leer disponibles</string>
     <string name="parse_full_content_desc">Obtener artículos completos de páginas web</string>
+    <string name="tips_and_support">Consejos y ayuda</string>
 </resources>

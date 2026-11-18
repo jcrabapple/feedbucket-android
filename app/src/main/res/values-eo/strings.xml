@@ -69,8 +69,6 @@
     <string name="interaction_desc">Komenca paĝo, haptika retrosciigo</string>
     <string name="help_translate">Helpu traduki</string>
     <string name="use_device_languages">Uzi aparatlingvon</string>
-    <string name="tips_and_support">Konsiloj ⳤ subteno</string>
-    <string name="tips_and_support_desc">Pri, malfermkodaj licencoj</string>
     <string name="welcome">Bonvenon</string>
     <string name="tos_tips">Bonvolu legi kaj konsenti pri servokondiĉoj kaj privateca politiko de Read You por daŭrigi.</string>
     <string name="browse_tos_tips">Foliumi la <i><u>servokondiĉojn kaj privatecan politikon</u></i></string>
@@ -93,7 +91,6 @@
     <string name="basic_fonts">Bazaj tiparoj</string>
     <string name="flow_page">Flua paĝo</string>
     <string name="reading_page">Legada paĝo</string>
-    <string name="sponsor">Sponsori</string>
     <string name="open_source_licenses">Malfermitkodaj Licencoj</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Ŝanĝprotokolo</string>
@@ -303,7 +300,6 @@
     <string name="only_available_on_webview">Nur disponebla uzante la WebView enhava bildigilo</string>
     <string name="mark_as_read_on_scroll">Marki kiel legitan je rulumado</string>
     <string name="hide_empty_groups">Kaŝi senhavajn grupojn</string>
-    <string name="become_a_sponsor">Iĝi sponsoro</string>
     <string name="latest">Pli ĵusaj unue</string>
     <string name="earliest">Pli fruaj unue</string>
     <string name="sort_unread_articles">Ordigi nelegitajn artikolojn</string>
@@ -323,6 +319,6 @@
     <string name="keep_archived_tips">Arkivitaj eroj estas artikoloj kiuj estas markita kiel legitajn, ne stelumitaj kaj ne etiketitaj. La agordo «Konservi arkivitajn artikolojn» estas nur efektiva en tiu ĉi aparato. Malnove arkivitaj artikoloj estos forigata el tiu ĉi aparato. La forigo artikolojn ne povas esti malfarata.</string>
     <string name="submit_bug_report">Sendi cimraporton en Github</string>
     <string name="export_as_protobuf_file">Eksporti kiel protobuf dosiero</string>
-    <string name="sponsor_desc">Ni konstruas kaj prizorgas tiun liberan, malfermitkodan apon dum nia libertempo. Se vi ŝatas ĝin, bonvolu konsideri subteni nin per eta donaco! ☕️</string>
     <string name="import_from_protobuf_file">Importi el protobuf dosiero</string>
+    <string name="tips_and_support">Konsiloj ⳤ subteno</string>
 </resources>

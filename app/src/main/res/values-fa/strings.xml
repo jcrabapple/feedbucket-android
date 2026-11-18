@@ -89,8 +89,6 @@
     <string name="languages">زبان ها</string>
     <string name="help_translate">کمک در ترجمه</string>
     <string name="use_device_languages">استفاده از زبان دستگاه</string>
-    <string name="tips_and_support">نکات و پشتیبانی</string>
-    <string name="tips_and_support_desc">درباره، حامیان مالی، مجوزهای منبع‌باز</string>
     <string name="welcome">خوش آمدید</string>
     <string name="tos_tips">برای ادامه، شرایط خدمات و خط مشی رازداری Read You را بخوانید و موافقت کنید.</string>
     <string name="browse_tos_tips"><i><u>شرایط خدمات و خط مشی رازداری</u></i> را مرور کنید</string>
@@ -116,7 +114,6 @@
     <string name="feeds_page">صفحه فید ها</string>
     <string name="flow_page">صفحه جریان</string>
     <string name="reading_page">صفحه خواندن</string>
-    <string name="sponsor">حامی</string>
     <string name="open_source_licenses">لایسنس های متن باز</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">تغییرات</string>
@@ -315,8 +312,6 @@
     <string name="about">درباره</string>
     <string name="mark_as_read_on_scroll">گذاشتن علامت خوانده شده وقتی پایین فهرست می روید</string>
     <string name="hide_empty_groups">قایم کردن گروه های خالی</string>
-    <string name="become_a_sponsor">پشتیبان بشوید</string>
-    <string name="sponsor_desc">ما این برنامه ی متنباز را در زمان ازاد خود میسازیم و ادامه میدهیمو اگر این برنامه را دوست دارید لطفا از ما حمایت کنید با یک کمک مالی کوچک! ☕️</string>
     <string name="toolbars">نوار ابزار ها</string>
     <string name="sort_unread_articles">مرتب کردن بر اساس مقاله های خوانده نشده</string>
     <string name="latest">چدید ترین</string>
@@ -353,4 +348,5 @@
     <string name="bold_characters_preview">چند حروف اول کلمات را در یک مقاله پررنگ کنید</string>
     <string name="mark_all_as_read_and_load_next_feed">همه رو به عنوان خوانده شده علامت بزن و فید بعدی رو بارگذاری کن</string>
     <string name="group_configuration_description">تنظیم کردن \"%1$s\" برای فید ها در \"%2$s\"</string>
+    <string name="tips_and_support">نکات و پشتیبانی</string>
 </resources>

@@ -64,8 +64,6 @@
     <string name="languages">Mga Wika</string>
     <string name="help_translate">Tumulong magsalin</string>
     <string name="use_device_languages">Gamitin ang wika ng device</string>
-    <string name="tips_and_support">Mga tip at support</string>
-    <string name="tips_and_support_desc">Tungkol, mga open source na lisensya</string>
     <string name="welcome">Maligayang Pagdating</string>
     <string name="tos_tips">Mangyaring basahin at sumang-ayon sa Mga Tuntunin ng Serbisyo at Patakaran sa Privacy ng Read You upang magpatuloy.</string>
     <string name="terms_of_service">Mga Tuntunin sa Serbisyo</string>
@@ -90,7 +88,6 @@
     <string name="feeds_page">Pahina ng mga feed</string>
     <string name="flow_page">Flow na pahina</string>
     <string name="reading_page">Pahina ng pagbasa</string>
-    <string name="sponsor">Sponsor</string>
     <string name="open_source_licenses">Mga open source na lisensya</string>
     <string name="check_failure">Nabigong tumingin ng mga update</string>
     <string name="download_failure">Hindi ma-download ang mga update</string>
@@ -152,4 +149,5 @@
     <string name="is_latest_version">Ito ang pinakabagong bersyon ng app</string>
     <string name="preview_feed_name">Reddit</string>
     <string name="services">Mga Serbisyo</string>
+    <string name="tips_and_support">Mga tip at support</string>
 </resources>

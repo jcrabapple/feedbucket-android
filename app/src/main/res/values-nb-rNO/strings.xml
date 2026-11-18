@@ -22,7 +22,6 @@
     <string name="style">Stil</string>
     <string name="off">Av</string>
     <string name="other">Annet</string>
-    <string name="sponsor">Sponsor</string>
     <string name="is_latest_version">Dette er siste versjon</string>
     <string name="help">Hjelp</string>
     <string name="on_start">Ved oppstart</string>
@@ -71,7 +70,6 @@
     <string name="interaction">Interaksjon</string>
     <string name="help_translate">Bistå oversettelsen</string>
     <string name="use_device_languages">Bruk enhetsspråket</string>
-    <string name="tips_and_support">Tips og støtte</string>
     <string name="agree">Jeg samtykker</string>
     <string name="appearance">Utseende</string>
     <string name="primary_color">Primærfarge</string>
@@ -161,7 +159,6 @@
     <string name="unsubscribe_tips">Opphev abonnement på «%1$s» og slett alle arkiverte artikler i den.</string>
     <string name="group_option_tips">Følgende alternativer vil bli brukt for alle informasjonskanaler i gruppen.</string>
     <string name="mark_as_unstar">Opphev stjernemerking</string>
-    <string name="tips_and_support_desc">Om, frie lisenser</string>
     <string name="tos_tips">Les og samtykk til Read You sine tjenestevilkår og personvernspraksis for å fortsette.</string>
     <string name="browse_tos_tips">Utforsk <i><u>tjenestevilkår og personvernspraksis</u></i></string>
     <string name="interaction_desc">Ved programstart, haptisk tilbakemelding</string>
@@ -262,4 +259,5 @@
     <string name="default_browser">Påtving forvalgt filbehandler</string>
     <string name="open_link_something_wrong">Innstilling for åpning av lenke ble ignorert fordi noe gikk galt.</string>
     <string name="open_link_specific_browser_not_selected">Ingen</string>
+    <string name="tips_and_support">Tips og støtte</string>
 </resources>

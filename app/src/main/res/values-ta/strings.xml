@@ -2,7 +2,6 @@
 <resources>
     <string name="content_renderer">உள்ளடக்க வழங்குனர்</string>
     <string name="read_aloud">உரக்க வாசி</string>
-    <string name="become_a_sponsor">ஆதரவாளர் ஆகுக</string>
     <string name="unread">படிக்காதவை</string>
     <string name="starred">விண்மீனிடப்பட்டது</string>
     <string name="feeds">ஊட்டங்கள்</string>
@@ -132,7 +131,6 @@
     <string name="accounts_desc">உற்றிடம், FreshRSS</string>
     <string name="mark_as_read_button_position">முடிந்தால் \"வாசித்தவை என குறியிடு\" பொத்தான்</string>
     <string name="color_and_style">நிறம் &amp; பாணி</string>
-    <string name="tips_and_support_desc">இது பற்றி, விரி எழுவாய் உரிமங்கள்</string>
     <string name="wallpaper_colors">முகப்போவிய நிறங்கள்</string>
     <string name="rate_limit">கோரிக்கை விகிதம் வரையறுக்கப்பட்டது</string>
     <string name="icons">வடிவுருக்கள்</string>
@@ -188,7 +186,6 @@
     <string name="invalid_protobuf_file_warning">இந்தக் கோப்பு செல்லத்தக்க புரோட்டோபஃப் கோப்பாக இல்லாமல் இருக்கலாம். அதை இறக்குமதி செய்வது பயன்பாட்டை சிதைக்கக்கூடும் மற்றும் தற்போதைய விருப்பங்களை இழக்க நேரிடும். நிச்சயமாக தொடர விரும்புகிறீர்களா?</string>
     <string name="tos_tips">தொடர்வதற்கு, தயவுசெய்து Read You\' இன் சேவை விதிமுறைகள் மற்றும் தனியுரிமைக் கொள்கையை படித்து ஒப்புக்கொள்ளுங்கள்.</string>
     <string name="mark_above_as_read">மேலுள்ளவற்றை வாசித்தவை என குறியிடு</string>
-    <string name="sponsor_desc">இந்த சுதந்திர, விரி எழுவாய் செயலி பயன்பாட்டை எங்கள் ஓய்வு நேரங்களில் உருவாக்கி பராமரிக்கிறோம். நீங்கள் அதை அனுபவித்தால், தயவுசெய்து ஒரு சிறிய நன்கொடை மூலம் எங்களை ஆதரிப்பதைக் ஆலோசியுங்கள்! ☕️</string>
     <string name="open_in_browser">உலாவியில் திற</string>
     <string name="all_open_in_browser_tips">\"%1$s\" குழுவின் அனைத்து கட்டுரைகளையும் உலாவியை பயன்படுத்தி திற</string>
     <string name="all_open_in_browser_toast">\"%1$s\" குழுவின் அனைத்து கட்டுரைகளையும் உலாவியை பயன்படுத்தி திற</string>
@@ -220,7 +217,6 @@
     <string name="interaction_desc">தலைப்பு பக்கம், தொடுப்பு பின்னூட்டல்</string>
     <string name="languages">மொழிகள்</string>
     <string name="help_translate">மொழிபெயர்க்க உதவு</string>
-    <string name="tips_and_support">கொசுறு &amp; ஆதரவு</string>
     <string name="no_palettes">தட்டுக்கள் இல்லை</string>
     <string name="basic_colors">அடிப்படை நிறங்கள்</string>
     <string name="primary_color">முதன்மை நிறம்</string>
@@ -237,7 +233,6 @@
     <string name="basic_fonts">அடிப்படை எழுத்துருக்கள்</string>
     <string name="flow_page">பாய்வு பக்கம்</string>
     <string name="reading_page">வாசிப்பு பக்கம்</string>
-    <string name="sponsor">ஆதரவாளர்</string>
     <string name="change_log">மாற்றப்பதிகை</string>
     <string name="update">புதுப்பி</string>
     <string name="skip_this_version">இப்பதிப்பைக் கடந்திடு</string>
@@ -323,4 +318,5 @@
     <string name="none_desc">ஏதுமில்லை</string>
     <string name="short_desc">குட்டை</string>
     <string name="long_desc">நீளம்</string>
+    <string name="tips_and_support">கொசுறு &amp; ஆதரவு</string>
 </resources>

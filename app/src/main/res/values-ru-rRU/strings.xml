@@ -104,7 +104,6 @@
     <string name="on_start">На старте</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="open_source_licenses">Лицензии свободного ПО</string>
-    <string name="sponsor">Спонсор</string>
     <string name="reading_page">Страница чтения</string>
     <string name="reading_fonts">Шрифты чтения</string>
     <string name="dark_theme">Тёмная тема</string>
@@ -115,8 +114,6 @@
     <string name="primary_color">Основной цвет</string>
     <string name="no_palettes">Цветовые палитры не найдены</string>
     <string name="wallpaper_colors">Цвета на основе заставки</string>
-    <string name="tips_and_support">Советы и поддержка</string>
-    <string name="tips_and_support_desc">О программе, спонсор, лицензии с открытым исходным кодом</string>
     <string name="unsubscribe_tips">Отписаться от ленты \"%1$s\" и удалить все архивные статьи в ней</string>
     <string name="delete_group_tips">Удалить группу \"%1$s\" а также все ленты в ней вместе с архивными статьями</string>
     <string name="group_option_tips">Применить следующие настройки ко всем лентам в этой группе</string>
@@ -316,8 +313,6 @@
     <string name="native_component">Изначальный компонент</string>
     <string name="toolbars">Панели инструментов</string>
     <string name="mark_as_read_on_scroll">Отметить как прочитанное при прокрутке</string>
-    <string name="become_a_sponsor">Стать спонсором</string>
-    <string name="sponsor_desc">Мы создаём и поддерживаем это бесплатное приложение с открытым исходным кодом в свободное время. Если оно вам нравится, пожалуйста, поддержите нас небольшим пожертвованием! ☕️</string>
     <string name="hide_empty_groups">Скрыть пустые группы</string>
     <string name="open_in_browser">Открыть в обозревателе</string>
     <string name="all_open_in_browser_tips">Откройте все статьи в группе \"%1$s\" с помощью браузера по умолчанию</string>
@@ -359,4 +354,5 @@
     <string name="parse_full_content_desc">Получение полных текстов статей с веб-страниц</string>
     <string name="enable">Включить</string>
     <string name="disable">Отключить</string>
+    <string name="tips_and_support">Советы и поддержка</string>
 </resources>

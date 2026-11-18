@@ -101,8 +101,6 @@
     <string name="languages">Hizkuntzak</string>
     <string name="help_translate">Itzulpenarekin lagundu</string>
     <string name="use_device_languages">Gailuaren hizkuntza erabili</string>
-    <string name="tips_and_support">Aholkuak eta babesa</string>
-    <string name="tips_and_support_desc">Honi buruz, kode irekiko lizentziak</string>
     <string name="welcome">Ongi etorri</string>
     <string name="tos_tips">Mesedez irakurri eta onartu Read You-ren zerbitzu-baldintzak eta pribatutasun politika jarraitu ahal izateko.</string>
     <string name="browse_tos_tips">Nabigatu <i><u>zerbitzu-baldintzetan eta pribatutasun politikan</u></i></string>
@@ -237,7 +235,6 @@
     <string name="feeds_page">Jarioen orria</string>
     <string name="flow_page">Fluxu orria</string>
     <string name="reading_page">Irakurketa orria</string>
-    <string name="sponsor">Babesa eman</string>
     <string name="open_source_licenses">Kode irekiko lizentziak</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Aldaketa egunkaria</string>
@@ -387,4 +384,5 @@
     <string name="copy_error_report">Erroreen txostena kopiatu</string>
     <string name="swipe_to_start">Arrastatu ezkerrera</string>
     <string name="swipe_to_end">Arrastatu eskuinera</string>
+    <string name="tips_and_support">Aholkuak eta babesa</string>
 </resources>

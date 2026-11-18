@@ -48,4 +48,18 @@ class AppEntryRootStacksTest {
         assertEquals(Route.Feeds, suiteRootOrder[1])
         assertEquals(Route.Settings, suiteRootOrder[2])
     }
+
+    @Test
+    fun settingsLicenseListRouteSurvivesSaverRoundTrip() {
+        // Tips & Support page removed; the GPL-attribution LicenseList page must
+        // stay reachable from Settings, so its route must survive process death.
+        val stacks =
+            mutableMapOf<Route, List<Route>>(
+                Route.Settings to listOf(Route.Settings, Route.LicenseList),
+            )
+
+        val restored = restoreRootStacks(saveRootStacks(stacks)!!)!!
+        assertEquals(stacks, restored)
+        assertTrue(restored[Route.Settings]!!.contains(Route.LicenseList))
+    }
 }

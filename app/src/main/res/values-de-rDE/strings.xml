@@ -101,8 +101,6 @@
     <string name="languages">Sprachen</string>
     <string name="help_translate">Hilf uns beim Übersetzen</string>
     <string name="use_device_languages">Gerätesprache verwenden</string>
-    <string name="tips_and_support">Tipps &amp; Support</string>
-    <string name="tips_and_support_desc">Über, Sponsor, Open-Source-Lizenzen</string>
     <string name="welcome">Willkommen</string>
     <string name="tos_tips">Bitte lesen Sie die Nutzungsbedingungen und die Datenschutzrichtlinie von Read You und stimmen Sie ihnen zu, um fortzufahren.</string>
     <string name="browse_tos_tips">Durchsuchen Sie die <i><u>Nutzungsbedingungen und Datenschutzbestimmungen</u></i></string>
@@ -129,7 +127,6 @@
     <string name="feeds_page">Feeds-Seite</string>
     <string name="flow_page">Flow-Seite</string>
     <string name="reading_page">Leseseite</string>
-    <string name="sponsor">Sponsor</string>
     <string name="open_source_licenses">Open Source Lizenzen</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Änderungsprotokoll</string>
@@ -310,8 +307,6 @@
     <string name="about">Über</string>
     <string name="toolbars">Werkzeugleisten</string>
     <string name="mark_as_read_on_scroll">Beim Scrollen als gelesen markieren</string>
-    <string name="become_a_sponsor">Sponsor werden</string>
-    <string name="sponsor_desc">Wir entwickeln und pflegen diese kostenlose, quelloffene Anwendung in unserer Freizeit. Wenn sie Ihnen gefällt, unterstützen Sie uns bitte mit einer kleinen Spende! ☕️</string>
     <string name="open_in_browser">Im Browser öffnen</string>
     <string name="all_open_in_browser_tips">Alle Artikel der Gruppe „%1$s“ im Standard-Browser öffnen</string>
     <string name="all_open_in_browser_toast">Das Öffnen aller Artikel der Gruppe „%1$s“ im Standard-Browser ist erlaubt</string>
@@ -353,4 +348,5 @@
     <string name="enable">Aktivieren</string>
     <string name="disable">Deaktivieren</string>
     <string name="apply">Anwenden</string>
+    <string name="tips_and_support">Tipps &amp; Support</string>
 </resources>

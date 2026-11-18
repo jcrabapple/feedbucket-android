@@ -99,8 +99,6 @@
     <string name="languages">语言</string>
     <string name="use_device_languages">跟随系统设置</string>
     <string name="help_translate">帮助我们翻译</string>
-    <string name="tips_and_support">提示和支持</string>
-    <string name="tips_and_support_desc">关于、赞助者、开源许可证</string>
     <string name="welcome">欢迎</string>
     <string name="tos_tips">在此之前，请阅读并同意 Read You 的服务条款与隐私政策。</string>
     <string name="browse_tos_tips">查看《<i><u>服务条款与隐私政策</u></i>》</string>
@@ -127,7 +125,6 @@
     <string name="feeds_page">订阅源页面</string>
     <string name="flow_page">信息流页面</string>
     <string name="reading_page">阅读页面</string>
-    <string name="sponsor">捐赠</string>
     <string name="open_source_licenses">开放源代码许可</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">更新日志</string>
@@ -306,8 +303,6 @@
     <string name="native_component">原生组件</string>
     <string name="about">关于</string>
     <string name="mark_as_read_on_scroll">滚动时标记为已读</string>
-    <string name="become_a_sponsor">成为赞助者</string>
-    <string name="sponsor_desc">我们在闲暇时间构建并维护这个自由开源应用。如果你觉得应用还不错，请考虑用小额捐赠支持哦我们！☕️</string>
     <string name="toolbars">工具栏</string>
     <string name="hide_empty_groups">隐藏空的分组</string>
     <string name="open_in_browser">在浏览器中打开</string>
@@ -350,4 +345,5 @@
     <string name="parse_full_content_desc">从网页获取完整内容</string>
     <string name="enable">启用</string>
     <string name="disable">停用</string>
+    <string name="tips_and_support">提示和支持</string>
 </resources>

@@ -70,8 +70,6 @@
     <string name="color_and_style">Renk ve stil</string>
     <string name="languages">Dil</string>
     <string name="use_device_languages">Cihaz dilini kullan</string>
-    <string name="tips_and_support">İpuçları ve destek</string>
-    <string name="tips_and_support_desc">Hakkında, sponsor, açık kaynak lisansları</string>
     <string name="welcome">Hoş geldin</string>
     <string name="tos_tips">Devam etmek için lütfen Read You\'nun hizmet koşullarını ve gizlilik politikasını okuyun ve kabul edin.</string>
     <string name="browse_tos_tips"><i><u>Hizmet koşulları ve gizlilik politikasına göz atın</u></i></string>
@@ -85,7 +83,6 @@
     <string name="on">Açık</string>
     <string name="off">Kapalı</string>
     <string name="flow_page">Akış sayfası</string>
-    <string name="sponsor">Sponsor</string>
     <string name="open_source_licenses">Açık kaynak lisansları</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Değişim günlüğü</string>
@@ -311,7 +308,6 @@
     <string name="open_in_browser">Tarayıcıda aç</string>
     <string name="all_open_in_browser_tips">\"%1$s\" grubundaki tüm makaleleri varsayılan tarayıcıyı kullanarak aç</string>
     <string name="all_open_in_browser_toast">\"%1$s\" grubundaki tüm makaleleri varsayılan tarayıcıyı kullanarak açmaya izin verildi</string>
-    <string name="become_a_sponsor">Sponsor olun</string>
     <string name="short_desc">Kısa</string>
     <string name="long_desc">Uzun</string>
     <string name="none_desc">Hiçbiri</string>
@@ -330,7 +326,6 @@
     <string name="content_renderer">İçerik Oluşturucu</string>
     <string name="only_available_on_webview">Yalnızca WebView içerik işleyicisi kullanılırken kullanılabilir</string>
     <string name="mark_as_read_on_scroll">Kaydırınca okundu olarak işaretle</string>
-    <string name="sponsor_desc">Bu ücretsiz, açık kaynaklı uygulamayı boş zamanlarımızda geliştiriyor ve bakımını yapıyoruz. Uygulamayı beğendiyseniz, lütfen küçük bir bağışla bize destek olmayı düşünün! ☕️</string>
     <string name="toolbars">Araç çubukları</string>
     <string name="sort_unread_articles">Okunmamış makaleleri sırala</string>
     <string name="earliest">En erken</string>
@@ -353,4 +348,5 @@
     <string name="parse_full_content_desc">Web sayfalarından makalelerin tamamını çek</string>
     <string name="enable">Etkinleştir</string>
     <string name="disable">Devre dışı bırak</string>
+    <string name="tips_and_support">İpuçları ve destek</string>
 </resources>

@@ -110,9 +110,7 @@
     <string name="languages">Idiomas</string>
     <string name="help_translate">Ajude a traduzir</string>
     <string name="use_device_languages">Utilizar o idioma do sistema</string>
-    <string name="tips_and_support">Dicas e apoio</string>
     <string name="interaction_desc">Página de arranque, gestos</string>
-    <string name="tips_and_support_desc">Sobre, patrocinador, licenças de código aberto</string>
     <string name="welcome">Bem-vindo(a)</string>
     <string name="tos_tips">Por favor, leia e concorde com os termos de serviço e a política de privacidade Read You para continuar.</string>
     <string name="browse_tos_tips">Explore os <i><u>termos de serviço e a política de privacidade</u></i></string>
@@ -134,7 +132,6 @@
     <string name="basic_fonts">Tipos de letra básicos</string>
     <string name="reading_page">Página de leitura</string>
     <string name="feeds_page">Página das fontes</string>
-    <string name="sponsor">Tornar-se num mecenas</string>
     <string name="open_source_licenses">Licenças de código aberto</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Registo de alterações</string>
@@ -313,8 +310,6 @@
     <string name="about">Sobre</string>
     <string name="mark_as_read_on_scroll">Marcar como lido na rolagem</string>
     <string name="toolbars">Barras de ferramentas</string>
-    <string name="become_a_sponsor">Torne-se um patrocinador</string>
-    <string name="sponsor_desc">Construímos e mantemos este aplicativo gratuito, de código aberto fora no nosso tempo livre. Se você gostou, considere nos apoiar com uma pequena doação! ☕️</string>
     <string name="pull_to_switch_feed">Arraste para carregar a próxima feed</string>
     <string name="all_open_in_browser_toast">Abrir todos os artigos do grupo \"%1$s\" utilizando o navegador padrão é permitido</string>
     <string name="all_open_in_browser_tips">Abrir todos os artigos do grupo \"%1$s\" utilizando o navegador predefinido</string>
@@ -356,4 +351,5 @@
     <string name="parse_full_content_desc">Ler artigos inteiros das páginas</string>
     <string name="enable">Habilitar</string>
     <string name="disable">Desabilitar</string>
+    <string name="tips_and_support">Dicas e apoio</string>
 </resources>

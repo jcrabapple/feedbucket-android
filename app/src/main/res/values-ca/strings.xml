@@ -106,7 +106,6 @@
     <string name="languages">Llenguatges</string>
     <string name="help_translate">Ajuda a la traducció</string>
     <string name="use_device_languages">Aplica el llenguatge del dispositiu</string>
-    <string name="tips_and_support_desc">Sobre les llicències de codi obert</string>
     <string name="welcome">Benvinguts/des</string>
     <string name="browse_tos_tips">Navega pels <i><u>Termes de Servei i Política de Privacitat</u></i></string>
     <string name="terms_of_service">Termes de Servei</string>
@@ -129,7 +128,6 @@
     <string name="feeds_page">Pàgina de fonts</string>
     <string name="flow_page">Pàgina de fluxe</string>
     <string name="reading_page">Llegint pàgina</string>
-    <string name="sponsor">Espònsor</string>
     <string name="update">Actualització</string>
     <string name="skip_this_version">Descarta aquesta versió</string>
     <string name="is_latest_version">Tens l\'última actualització de l\'aplicació</string>
@@ -141,7 +139,6 @@
     <string name="three_days">3d</string>
     <string name="accounts">Comptes</string>
     <string name="accounts_desc">Local, Fresh RSS</string>
-    <string name="tips_and_support">Consells i suport</string>
     <string name="rate_limit">El rati de peticions es limitat</string>
     <string name="help">Ajuda</string>
     <string name="on_start">Al iniciar</string>
@@ -286,4 +283,5 @@
     <string name="unfold_less">Col·lapsar</string>
     <string name="open_in_browser">Obrir al navegador</string>
     <string name="all_open_in_browser_tips">Obrir tots els articles del grup \"%1$s\" amb el navegador predeterminat</string>
+    <string name="tips_and_support">Consells i suport</string>
 </resources>

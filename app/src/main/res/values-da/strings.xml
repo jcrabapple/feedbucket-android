@@ -105,11 +105,9 @@
     <string name="interaction">Interaktion</string>
     <string name="help_translate">Hjælp med at oversætte</string>
     <string name="use_device_languages">Brug enhedssprog</string>
-    <string name="tips_and_support_desc">Om, frie licenser</string>
     <string name="tos_tips">Venligst accepter Read Yous brugervilkår og privatlivspolitik for at fortsætte.</string>
     <string name="browse_tos_tips">Udforsk <i><u>tjenestevilkår og privatlivspraksis</u></i></string>
     <string name="terms_of_service">Tjenestevilkår</string>
-    <string name="tips_and_support">Tips &amp; hjælp</string>
     <string name="welcome">Velkommen</string>
     <string name="agree">Enig</string>
     <string name="wallpaper_colors">Baggrundsfarver</string>
@@ -121,7 +119,6 @@
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="reading_page">Læseside</string>
     <string name="update">Opdater</string>
-    <string name="sponsor">Sponsor</string>
     <string name="rate_limit">Forespørgsel begrænset</string>
     <string name="help">Hjælp</string>
     <string name="skip_this_version">Spring denne version over</string>
@@ -301,4 +298,5 @@
     <string name="export_as_json">Eksporter som JSON</string>
     <string name="import_from_json">Importer fra JSON</string>
     <string name="invalid_json_file_warning">Denne fil er nok ikke en gyldig JSON-fil. Import af den kan potentielt ødelægge appen og resultere i tab af aktuelle præferencer. Er du sikker på, at du vil fortsætte?</string>
+    <string name="tips_and_support">Tips &amp; hjælp</string>
 </resources>

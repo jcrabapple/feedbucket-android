@@ -72,7 +72,6 @@
     <string name="feeds_page">Stran z viri</string>
     <string name="flow_page">Stran pretoka</string>
     <string name="reading_page">Bralna stran</string>
-    <string name="sponsor">Sponzor</string>
     <string name="open_source_licenses">Odprtokodne licence</string>
     <string name="change_log">Seznam sprememb</string>
     <string name="skip_this_version">Preskoči to različico</string>
@@ -174,10 +173,8 @@
     <string name="get_new_updates_desc">Na voljo je nova različica %1$s</string>
     <string name="accounts_desc">Lokalni, FreshRSS</string>
     <string name="interaction">Interakcija</string>
-    <string name="tips_and_support_desc">O programski opremi, odprtokodne licence</string>
     <string name="color_and_style">Barva in slog</string>
     <string name="color_and_style_desc">Tema, barvni slog, velikost pisave</string>
-    <string name="tips_and_support">Nasveti in podpora</string>
     <string name="help_translate">Pomoč pri prevajanju</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="update">Posodobitev</string>
@@ -230,4 +227,5 @@
     <string name="more">Več</string>
     <string name="list">Seznam</string>
     <string name="empty">Prazno</string>
+    <string name="tips_and_support">Nasveti in podpora</string>
 </resources>

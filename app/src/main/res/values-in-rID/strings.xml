@@ -98,8 +98,6 @@
     <string name="languages">Bahasa</string>
     <string name="help_translate">Bantu terjemahkan</string>
     <string name="use_device_languages">Gunakan bahasa perangkat</string>
-    <string name="tips_and_support">Tips dan Bantuan</string>
-    <string name="tips_and_support_desc">Tentang, sponsor, lisensi open source</string>
     <string name="welcome">Selamat Datang</string>
     <string name="tos_tips">Harap baca dan setujui untuk Membaca ketentuan layanan dan kebijakan privasi Anda untuk melanjutkan.</string>
     <string name="browse_tos_tips">Pelajari lebih lanjut <i><u>Syarat Penggunaan Layanan dan Kebijakan Privasi</u></i></string>
@@ -126,7 +124,6 @@
     <string name="feeds_page">Halaman umpan</string>
     <string name="flow_page">Halaman alur</string>
     <string name="reading_page">Halaman membaca</string>
-    <string name="sponsor">Sponsor</string>
     <string name="open_source_licenses">Lisensi sumber terbuka</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Daftar Perubahan</string>
@@ -306,9 +303,7 @@
     <string name="native_component">Komponen Asli</string>
     <string name="only_available_on_webview">Hanya tersedia saat menggunakan renderer konten webview</string>
     <string name="mark_as_read_on_scroll">Baca sebagai dibaca saat digulir</string>
-    <string name="become_a_sponsor">Jadilah sponsor</string>
     <string name="toolbars">Bilah alat</string>
-    <string name="sponsor_desc">Kami membangun dan memelihara aplikasi sumber terbuka gratis ini di luar jam kerja. Jika Anda menikmatinya, tolong kebaikan anda untuk mendukung kami dengan segera mengirim donasi! ☕️</string>
     <string name="latest">Terbaru</string>
     <string name="earliest">Paling awal</string>
     <string name="short_desc">Pendek</string>
@@ -350,4 +345,5 @@
     <string name="parse_full_content_desc">Ambil artikel lengkap dari halaman web</string>
     <string name="enable">Aktifkan</string>
     <string name="disable">Nonaktifkan</string>
+    <string name="tips_and_support">Tips dan Bantuan</string>
 </resources>

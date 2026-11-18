@@ -146,8 +146,6 @@
     <string name="languages">Nyelvek</string>
     <string name="help_translate">Segítsen a fordításban</string>
     <string name="use_device_languages">Eszköz nyelvének használata</string>
-    <string name="tips_and_support">Tippek és támogatás</string>
-    <string name="tips_and_support_desc">Névjegy, szponzorálás, nyílt forráskódú licencek</string>
     <string name="welcome">Üdvözöljük</string>
     <string name="browse_tos_tips">A <i><u>használati feltételek és adatvédelmi irányelvek</u></i> böngészése</string>
     <string name="terms_of_service">Használati feltételek</string>
@@ -171,7 +169,6 @@
     <string name="amoled_dark_theme">Fekete sötét téma</string>
     <string name="tonal_elevation">Tónusos emelkedés</string>
     <string name="reading_page">Olvasási oldal</string>
-    <string name="sponsor">Adományozás</string>
     <string name="open_source_licenses">Nyílt forráskódú licencek</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Változáslista</string>
@@ -267,7 +264,6 @@
     <string name="export_as_protobuf_file">Exportálás protobuf-fájlba</string>
     <string name="export_as_json">Exportálás JSON-fájlba</string>
     <string name="toolbars">Eszköztárak</string>
-    <string name="become_a_sponsor">Legyen szponzor</string>
     <string name="unexpected_error_msg">Az alkalmazás váratlan hibát észlelt, és bezárult.\n\nHogy segítsen nekünk a probléma gyors azonosításában és kijavításában, %1$s az alábbi stack trace segítségével.</string>
     <string name="unfold_more">Összes kibontása</string>
     <string name="unfold_less">Összes összecsukása</string>
@@ -313,7 +309,6 @@
     <string name="sort_unread_articles">Olvasatlan cikkek rendezése</string>
     <string name="latest">Legújabb</string>
     <string name="earliest">Legrégebbi</string>
-    <string name="sponsor_desc">Ezt az ingyenes, nyílt forráskódú alkalmazást a szabadidőnkben készítjük és tartjuk karban. Ha tetszik önnek, akkor támogasson minket egy kis adománnyal! ☕️</string>
     <string name="hide_empty_groups">Üres csoportok elrejtése</string>
     <string name="use_bold_characters">Félkövér karakterek használata</string>
     <string name="toggle_read">Olvasottnak jelölés ki/be</string>
@@ -353,4 +348,5 @@
     <string name="parse_full_content_desc">Teljes cikkek lekérése a weboldalakról</string>
     <string name="enable">Engedélyezés</string>
     <string name="disable">Letiltás</string>
+    <string name="tips_and_support">Tippek és támogatás</string>
 </resources>

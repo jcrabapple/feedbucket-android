@@ -64,7 +64,6 @@ import me.ash.reader.ui.page.settings.rules.RuleEditPage
 import me.ash.reader.ui.page.settings.rules.RulesPage
 import me.ash.reader.ui.page.settings.rules.RulesViewModel
 import me.ash.reader.ui.page.settings.tips.LicenseListPage
-import me.ash.reader.ui.page.settings.tips.TipsAndSupportPage
 import me.ash.reader.ui.page.settings.troubleshooting.TroubleshootingPage
 import me.ash.reader.ui.page.startup.StartupPage
 
@@ -291,7 +290,7 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 navigateToTroubleshooting = {
                                     backStack.add(Route.Troubleshooting)
                                 },
-                                navigateToTipsAndSupport = { backStack.add(Route.TipsAndSupport) },
+                                navigateToLicenseList = { backStack.add(Route.LicenseList) },
                                 navigateToRules = { backStack.add(Route.Rules) },
                                 navigateToDownloads = { backStack.add(Route.Downloads) },
                                 navigateToMigration = { backStack.add(Route.Migration) },
@@ -409,13 +408,6 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                     Route.Interaction -> NavEntry(key) { InteractionPage(onBack = onBack) }
                     Route.Languages -> NavEntry(key) { LanguagesPage(onBack = onBack) }
                     Route.Troubleshooting -> NavEntry(key) { TroubleshootingPage(onBack = onBack) }
-                    Route.TipsAndSupport ->
-                        NavEntry(key) {
-                            TipsAndSupportPage(
-                                onBack = onBack,
-                                navigateToLicenseList = { backStack.add(Route.LicenseList) },
-                            )
-                        }
                     Route.LicenseList -> NavEntry(key) { LicenseListPage(onBack = onBack) }
                     else -> NavEntry(key) { throw Exception("Unknown destination") }
                 }

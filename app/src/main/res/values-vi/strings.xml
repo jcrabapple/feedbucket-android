@@ -83,8 +83,6 @@
     <string name="accounts_desc">Điện thoại, FreshRSS</string>
     <string name="help_translate">Giúp dịch</string>
     <string name="use_device_languages">Dùng ngôn ngữ thiết bị</string>
-    <string name="tips_and_support">Mẹo &amp; hỗ trợ</string>
-    <string name="tips_and_support_desc">Giới thiệu, giấy phép mã nguồn mở</string>
     <string name="welcome">Chào mừng</string>
     <string name="tos_tips">Đọc và đồng ý với Điều khoản dịch vụ và Chính sách quyền riêng tư của Read You để tiếp tục.</string>
     <string name="browse_tos_tips">Đọc <i><u>Điều khoản Dịch vụ và Chính sách Bảo mật</u></i></string>
@@ -134,7 +132,6 @@
     <string name="reading_fonts">Phông chữ bài viết</string>
     <string name="feeds_page">Bảng tin</string>
     <string name="tonal_elevation">Tông màu</string>
-    <string name="sponsor">Tài trợ</string>
     <string name="open_source_licenses">Giấy phép mã nguồn mở</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="reading_page">Bài viết</string>
@@ -305,4 +302,5 @@
     <string name="only_available_on_webview">Chỉ có trên WebView</string>
     <string name="about">Giới thiệu</string>
     <string name="native_component">Native Component</string>
+    <string name="tips_and_support">Mẹo &amp; hỗ trợ</string>
 </resources>

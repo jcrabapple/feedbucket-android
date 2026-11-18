@@ -64,15 +64,12 @@
     <string name="about">Par lietotni</string>
     <string name="sort_unread_articles">Kārtot nelasītos rakstus</string>
     <string name="latest">Jaunākos augšgalā</string>
-    <string name="become_a_sponsor">Kļūt par sponsoru</string>
     <string name="hide_empty_groups">Paslēpt tukšās grupas</string>
     <string name="mark_as_read_on_scroll">Atzīmēt rakstu kā lasītu, to ritinot</string>
     <string name="pull_to_switch_feed">Pavilkt, lai ielādētu nākamo ziņu plūsmu</string>
     <string name="earliest">Vecākos augšgalā</string>
     <string name="delete_group">Dzēst grupu</string>
     <string name="open_with">Atvērt %1$s</string>
-    <string name="tips_and_support_desc">Par lietotni, sponsors, atvērtā pirmkoda licences</string>
-    <string name="tips_and_support">Padomi un atbalsts</string>
     <string name="basic_colors">Pamatkrāsas</string>
     <string name="primary_color_hint">Piemēram, #666666 vai 666666</string>
     <string name="appearance">Izskats</string>
@@ -166,7 +163,6 @@
     <string name="welcome">Esiet sveicināti</string>
     <string name="style">Stils</string>
     <string name="other">Pārējie</string>
-    <string name="sponsor">Sponsors</string>
     <string name="general">Vispārīgie</string>
     <string name="bold">Treknraksts</string>
     <string name="subhead">Apakšvirsraksts</string>
@@ -189,4 +185,5 @@
     <string name="color_and_style">Krāsa un stils</string>
     <string name="use_device_languages">Izmantot ierīces valodu</string>
     <string name="only_android_8.1_plus">Tikai Android 8.1+</string>
+    <string name="tips_and_support">Padomi un atbalsts</string>
 </resources>

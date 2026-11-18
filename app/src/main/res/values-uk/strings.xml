@@ -75,7 +75,6 @@
     <string name="mark_as_read_one_day">Позначити як прочитане більше 1 дня</string>
     <string name="mark_as_read_seven_days">Позначити як прочитане більше 7 днів тому</string>
     <string name="welcome">Ласкаво Просимо</string>
-    <string name="tips_and_support_desc">Про застосунок, спонсор, ліцензії з відкритим кодом</string>
     <string name="tos_tips">Будь ласка, прочитайте та погодьтеся з умовами надання послуг та політикою конфіденційності Read You, щоб продовжити.</string>
     <string name="open_with">Відкрити %1$s</string>
     <string name="mark_as_read">Позначити як прочитане</string>
@@ -130,7 +129,6 @@
     <string name="languages">Мова</string>
     <string name="help_translate">Допомога з перекладом</string>
     <string name="use_device_languages">Використовувати мову пристрою</string>
-    <string name="tips_and_support">Поради та підтримка</string>
     <string name="browse_tos_tips">Перегляньте <i><u>умови надання послуг та політику конфіденційності</u></i></string>
     <string name="terms_of_service">Умови надання послуг</string>
     <string name="agree">Згоден</string>
@@ -154,7 +152,6 @@
     <string name="feeds_page">Сторінка каналів</string>
     <string name="flow_page">Сторінка статей</string>
     <string name="reading_page">Сторінка читання</string>
-    <string name="sponsor">Спонсор</string>
     <string name="open_source_licenses">Ліцензії з відкритим кодом</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Список змін</string>
@@ -315,8 +312,6 @@
     <string name="only_available_on_webview">Доступно лише під час використання рендерера контенту WebView</string>
     <string name="about">Про застосунок</string>
     <string name="mark_as_read_on_scroll">Позначити як прочитане при прокручуванні</string>
-    <string name="become_a_sponsor">Стати спонсором</string>
-    <string name="sponsor_desc">Ми створюємо та підтримуємо цей безкоштовний додаток з відкритим кодом у вільний час. Якщо він вам подобається, будь ласка, подумайте про те, щоб підтримати нас невеликим пожертвуванням! ☕️</string>
     <string name="toolbars">Панелі інструментів</string>
     <string name="latest">Останній</string>
     <string name="sort_unread_articles">Сортувати непрочитані статті</string>
@@ -359,4 +354,5 @@
     <string name="parse_full_content_desc">Отримання повних статей з веб-сторінок</string>
     <string name="enable">Увімкнути</string>
     <string name="disable">Вимкнути</string>
+    <string name="tips_and_support">Поради та підтримка</string>
 </resources>

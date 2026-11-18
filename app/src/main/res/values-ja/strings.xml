@@ -122,11 +122,9 @@
     <string name="coming_soon">近日公開</string>
     <string name="accounts_desc">ローカル、FreshRSS</string>
     <string name="color_and_style_desc">テーマ、カラースタイル、フォントサイズ</string>
-    <string name="tips_and_support">ヒントとサポート</string>
     <string name="color_and_style">色とスタイル</string>
     <string name="use_device_languages">デバイスの言語を使用する</string>
     <string name="tos_tips">Read You の利用規約とプライバシーポリシーをお読みになり、同意される場合は、[同意する]をタップしてください。</string>
-    <string name="tips_and_support_desc">このアプリについて、スポンサー、オープンソースライセンス</string>
     <string name="browse_tos_tips"><i><u>利用規約とプライバシー ポリシー</u></i>をご覧ください</string>
     <string name="reading_fonts">フォント</string>
     <string name="flow_page">フローページ</string>
@@ -137,7 +135,6 @@
     <string name="use_device_theme">デバイスのテーマを使用する</string>
     <string name="skip_this_version">このバージョンをスキップ</string>
     <string name="feeds_page">フィードページ</string>
-    <string name="sponsor">スポンサー</string>
     <string name="check_failure">アップデートを確認できませんでした</string>
     <string name="rate_limit">リクエストレートが制限されています</string>
     <string name="checking_updates">アップデートを確認中…</string>
@@ -299,9 +296,9 @@
     <string name="only_available_on_webview">WebViewレンダラーの利用時のみ利用可能</string>
     <string name="mark_as_read_on_scroll">スクロールした際に既読にする</string>
     <string name="hide_empty_groups">空のグループを隠す</string>
-    <string name="become_a_sponsor">スポンサーになる</string>
     <string name="toolbars">ツールバー</string>
     <string name="latest">最新</string>
     <string name="earliest">最古</string>
     <string name="sort_unread_articles">未読の記事を並べ替える</string>
+    <string name="tips_and_support">ヒントとサポート</string>
 </resources>

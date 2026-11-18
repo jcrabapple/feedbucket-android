@@ -20,7 +20,6 @@
     <string name="title">Наслов</string>
     <string name="date_at_time">%1$s у %2$s</string>
     <string name="interaction_desc">Иницијална страница, покрети</string>
-    <string name="tips_and_support">Савети и подршка</string>
     <string name="custom_tabs">Присили прилагођене картице</string>
     <string name="only_on_wifi">Само на Wi-Fi</string>
     <string name="password">Лозинка</string>
@@ -157,7 +156,6 @@
     <string name="local">Локално</string>
     <string name="services">Услуге</string>
     <string name="text_desc">Величина фонта, размак између слова, поравнање</string>
-    <string name="sponsor">Спонзор</string>
     <string name="for_3_days">3 дана</string>
     <string name="deny">Одбиј</string>
     <string name="align_end">Поравнај крај</string>
@@ -259,7 +257,6 @@
     <string name="system_default">Системски</string>
     <string name="clear_articles_in_group_toast">Очишћени су сви архивирани чланци у групи „%1$s“</string>
     <string name="reading_fonts">Читање фонтова</string>
-    <string name="tips_and_support_desc">О апликацији, спонзор, лиценце отвореног кода</string>
     <string name="mark_as_unread">Означи као непрочитано</string>
     <string name="change_log">Евиденција промена</string>
     <string name="alignment">Поравнање</string>
@@ -312,8 +309,6 @@
     <string name="read_aloud">Прочитајте наглас</string>
     <string name="about">О нама</string>
     <string name="mark_as_read_on_scroll">Означи као прочитано при превлачењу</string>
-    <string name="become_a_sponsor">Постани спонзор</string>
-    <string name="sponsor_desc">Ми правимо и одржавамо ову бесплатну апликацију отвореног кода у слободно време. Ако уживате, размислите о томе да нас подржите малом донацијом! ☕</string>
     <string name="toolbars">Траке са алаткама</string>
     <string name="open_in_browser">Отвори у прегледачу</string>
     <string name="all_open_in_browser_tips">Отворите све чланке у групи „%1$s“ помоћу подразумеваног прегледача</string>
@@ -356,4 +351,5 @@
     <string name="parse_full_content_desc">Преузмите целе чланке са веб-страница</string>
     <string name="enable">Омогући</string>
     <string name="disable">Онемогући</string>
+    <string name="tips_and_support">Савети и подршка</string>
 </resources>

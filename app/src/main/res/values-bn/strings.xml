@@ -108,8 +108,6 @@
     <string name="languages">ভাষাসমূহ</string>
     <string name="help_translate">অনুবাদে সাহায্য করুন</string>
     <string name="use_device_languages">ডিভাইসের ভাষা ব্যবহার করুন</string>
-    <string name="tips_and_support">পরামর্শ এবং সহায়তা</string>
-    <string name="tips_and_support_desc">সম্পর্কে, পৃষ্ঠপোষক, ওপেন সোর্স লাইসেন্স</string>
     <string name="welcome">স্বাগতম</string>
     <string name="tos_tips">চালিয়ে যেতে অনুগ্রহ করে Read You এর পরিষেবার শর্তাবলী এবং গোপনীয়তা নীতি পড়ুন এবং তাতে সম্মত হন।</string>
     <string name="browse_tos_tips"><i><u> পরিষেবার শর্তাবলী এবং গোপনীয়তা নীতি </u></i> ঘেঁটে দেখুন</string>
@@ -136,7 +134,6 @@
     <string name="feeds_page">ফিড পৃষ্ঠা</string>
     <string name="flow_page">প্রবাহ পৃষ্ঠা</string>
     <string name="reading_page">পড়ার পাতা</string>
-    <string name="sponsor">পৃষ্ঠপোষক</string>
     <string name="open_source_licenses">ওপেন সোর্স লাইসেন্স</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">পরিবর্তন বিবরণী</string>
@@ -159,4 +156,5 @@
     <string name="article_date">প্রবন্ধ প্রকাশের সময়</string>
     <string name="article_desc">প্রবন্ধের বর্ণনা</string>
     <string name="article_images">প্রবন্ধের ছবি</string>
+    <string name="tips_and_support">পরামর্শ এবং সহায়তা</string>
 </resources>

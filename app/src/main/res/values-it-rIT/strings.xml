@@ -104,8 +104,6 @@
     <string name="languages">Lingue</string>
     <string name="help_translate">Aiuta a tradurre</string>
     <string name="use_device_languages">Usa la lingua del dispositivo</string>
-    <string name="tips_and_support">Note e supporto</string>
-    <string name="tips_and_support_desc">Informazioni, sponsor, licenze open source</string>
     <string name="welcome">Benvenuto</string>
     <string name="tos_tips">Per favore, leggi e accetta i termini di servizio e l\'informativa sulla privacy di Read You per continuare.</string>
     <string name="browse_tos_tips">Sfoglia i <i><u>Termini di servizio e l\'Informativa sulla privacy</u></i></string>
@@ -132,7 +130,6 @@
     <string name="feeds_page">Pagina dei feed</string>
     <string name="flow_page">Pagina dei flow</string>
     <string name="reading_page">Pagina di lettura</string>
-    <string name="sponsor">Sponsorizza</string>
     <string name="open_source_licenses">Licenze open source</string>
     <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Cambiamenti e novità</string>
@@ -312,8 +309,6 @@
     <string name="native_component">Componente nativo</string>
     <string name="only_available_on_webview">Disponibile esclusivamente usando il render di contenuto WebView</string>
     <string name="mark_as_read_on_scroll">Contrassegna come letto allo scroll</string>
-    <string name="become_a_sponsor">Diventa uno sponsor</string>
-    <string name="sponsor_desc">Sviluppiamo e miglioriamo questa applicazione, gratuita ed open source, nel nostro tempo libero. Se ti piace, considera la possibilità di sostenerci con una piccola donazione! ☕</string>
     <string name="toolbars">Barre degli strumenti</string>
     <string name="hide_empty_groups">Nascondi i gruppi vuoti</string>
     <string name="open_in_browser">Apri nel browser</string>
@@ -356,4 +351,5 @@
     <string name="parse_full_content_desc">Recupera gli articoli completi dalle pagine web</string>
     <string name="enable">Attiva</string>
     <string name="disable">Disattiva</string>
+    <string name="tips_and_support">Note e supporto</string>
 </resources>

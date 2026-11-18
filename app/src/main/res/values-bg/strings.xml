@@ -103,8 +103,6 @@
     <string name="three_days">3д</string>
     <string name="seven_days">7д</string>
     <string name="languages">Езици</string>
-    <string name="tips_and_support">Съвети и поддръжка</string>
-    <string name="tips_and_support_desc">Относно, спонсор, лицензи с отворен код</string>
     <string name="browse_tos_tips">Разгледайте <i><u>условията за ползване и политиката за поверителност</u></i></string>
     <string name="tos_tips">Моля, прочетете и се съгласете с условията за ползване и политиката за поверителност на Read You, за да продължите.</string>
     <string name="terms_of_service">Условия за ползване</string>
@@ -121,7 +119,6 @@
     <string name="on">Включено</string>
     <string name="other">Друго</string>
     <string name="reading_fonts">Шрифтове за четене</string>
-    <string name="sponsor">Спонсор</string>
     <string name="open_source_licenses">Лицензи с отворен код</string>
     <string name="skip_this_version">Пропусни тази версия</string>
     <string name="checking_updates">Проверка за актуализации…</string>
@@ -309,8 +306,6 @@
     <string name="only_available_on_webview">Налично само при използване на визуализатора на съдържание WebView</string>
     <string name="native_component">Собствен компонент</string>
     <string name="mark_as_read_on_scroll">Маркирай като прочетено при превъртане</string>
-    <string name="become_a_sponsor">Станете спонсор</string>
-    <string name="sponsor_desc">Ние изграждаме и поддържаме това безплатно приложение с отворен код в свободното си време. Ако ви харесва, моля, помислете дали да ни подкрепите с малко дарение!! ☕️</string>
     <string name="toolbars">Ленти с инструменти</string>
     <string name="client_certificate">Клиентски сертификат (по избор)</string>
     <string name="open_in_browser">Отвори в браузъра</string>
@@ -353,4 +348,5 @@
     <string name="parse_full_content_desc">Извличане на пълни статии от уеб страници</string>
     <string name="enable">Активиране</string>
     <string name="disable">Деактивиране</string>
+    <string name="tips_and_support">Съвети и поддръжка</string>
 </resources>
