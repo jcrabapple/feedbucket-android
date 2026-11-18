@@ -13,6 +13,7 @@ import me.ash.reader.domain.model.query.TextNormalizer
 import me.ash.reader.infrastructure.db.AndroidDatabase
 import me.ash.reader.infrastructure.db.MIGRATION_7_8
 import me.ash.reader.infrastructure.db.NormalizationBackfill
+import me.ash.reader.infrastructure.db.allMigrations
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -126,13 +127,16 @@ class Migration7To8Test {
     @Test
     fun ftsTriggerSyncFollowsDaoWrites() = runBlocking {
         // App-path open: seed the v7 file, then let Room itself run the
-        // 7 -> 8 upgrade (migrations + onPostMigrate, which creates the
-        // room_fts_content_sync_* triggers — onPostMigrate only runs on
-        // upgrade, so a plain re-open at version 8 does not create them).
+        // 7 -> 9 upgrade through the registered allMigrations chain
+        // (MIGRATION_7_8 then MIGRATION_8_9 — the live AndroidDatabase is
+        // version 9, and Room requires the full path from the seeded
+        // version). onPostMigrate creates the room_fts_content_sync_*
+        // triggers — it only runs on upgrade, so a plain re-open at the
+        // current version does not create them.
         helper.createDatabase(TEST_DB, 7).also { seedV7(it) }.close()
         val context = ApplicationProvider.getApplicationContext<Context>()
         val migrated = Room.databaseBuilder(context, AndroidDatabase::class.java, TEST_DB)
-            .addMigrations(MIGRATION_7_8)
+            .addMigrations(*allMigrations)
             .build()
 
         fun matchCount(term: String): Int =
