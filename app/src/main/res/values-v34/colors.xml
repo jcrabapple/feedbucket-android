@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="splashscreenIconColor">
-        @android:color/system_on_surface_light
+        #FF145B60
     </color>
 </resources>
