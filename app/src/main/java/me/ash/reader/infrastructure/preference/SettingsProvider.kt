@@ -78,6 +78,7 @@ class SettingsProvider @Inject constructor(
             LocalCustomPrimaryColor provides settings.customPrimaryColor,
             LocalDarkTheme provides settings.darkTheme,
             LocalAmoledDarkTheme provides settings.amoledDarkTheme,
+            LocalDynamicColor provides settings.dynamicColor,
             LocalBasicFonts provides settings.basicFonts,
 
             // Feeds page

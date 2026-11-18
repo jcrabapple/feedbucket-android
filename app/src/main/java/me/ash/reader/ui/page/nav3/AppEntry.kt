@@ -1,29 +1,40 @@
 package me.ash.reader.ui.page.nav3
 
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
-import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.Json
+import me.ash.reader.R
 import me.ash.reader.ui.motion.materialSharedAxisXIn
 import me.ash.reader.ui.motion.materialSharedAxisXOut
 import me.ash.reader.ui.page.adaptive.ArticleData
@@ -59,20 +70,103 @@ import me.ash.reader.ui.page.startup.StartupPage
 
 private const val INITIAL_OFFSET_FACTOR = 0.10f
 
-@OptIn(
-    ExperimentalSharedTransitionApi::class,
-    ExperimentalMaterial3AdaptiveApi::class,
-    ExperimentalMaterial3AdaptiveApi::class,
-)
+/** At this font scale the detail pane drops below 320dp; Read goes one-pane. */
+private const val FONT_SCALE_ONE_PANE_THRESHOLD = 1.6f
+
+// UI-CONTRACT §2.1: three roots, NavigationSuiteScaffold bar/rail, no
+// dashboard. Fixed order drives the per-root stack saver.
+internal val suiteRootOrder: List<Route> =
+    listOf(Route.Reading(null), Route.Feeds, Route.Settings)
+
+internal val routeJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+/** JSON encoding of the per-root stacks (extracted for unit testing). */
+internal fun saveRootStacks(map: Map<Route, List<Route>>): String? =
+    runCatching { routeJson.encodeToString(suiteRootOrder.map { root -> map[root].orEmpty() }) }
+        .getOrNull()
+
+/** JSON decoding of the per-root stacks (extracted for unit testing). */
+internal fun restoreRootStacks(str: String): MutableMap<Route, List<Route>>? =
+    runCatching {
+            val saved = routeJson.decodeFromString<List<List<Route>>>(str)
+            mutableMapOf<Route, List<Route>>().apply {
+                suiteRootOrder.forEachIndexed { index, root ->
+                    if (index < saved.size && saved[index].isNotEmpty()) {
+                        put(root, saved[index])
+                    }
+                }
+            }
+        }
+        .getOrNull()
+
+/**
+ * Per-root back stack retention (UI-CONTRACT §2.1): top-level reselection is
+ * single-top + restore-state; switching roots does not destroy the Read
+ * generation (scope, query, selected article, list anchor, reading position).
+ */
+internal val RootStacksSaver =
+    Saver<MutableMap<Route, List<Route>>, String>(
+        save = { map -> saveRootStacks(map) },
+        restore = { str -> restoreRootStacks(str) },
+    )
+
+private fun NavKey.isSuiteRoot(): Boolean =
+    this == Route.Feeds || this == Route.Settings || (this as? Route.Reading)?.articleId == null
+
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? =
+    when (this) {
+        is android.app.Activity -> this
+        is android.content.ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
+private fun currentSuiteRoot(backStack: NavBackStack<NavKey>): Route =
+    (backStack.lastOrNull { it.isSuiteRoot() } as? Route) ?: Route.Feeds
+
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun AppEntry(backStack: NavBackStack<NavKey>) {
     val subscribeViewModel = hiltViewModel<SubscribeViewModel>()
 
-    val onBack: () -> Unit = {
-        if (backStack.size == 1) backStack[0] = Route.Feeds else backStack.removeLastOrNull()
+    val rootStacks =
+        rememberSaveable(saver = RootStacksSaver) { mutableMapOf<Route, List<Route>>() }
+    val currentRoot = currentSuiteRoot(backStack)
+
+    fun switchRoot(root: Route) {
+        if (currentRoot == root) return
+        rootStacks[currentRoot] = backStack.filterIsInstance<Route>()
+        backStack.clear()
+        backStack.addAll(rootStacks[root] ?: listOf(root))
     }
 
-    val scaffoldDirective = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())
+    // UI-CONTRACT §2.3 Back hierarchy: subpage pops first; at Feeds or
+    // Settings root Back selects Read; at Read root Back belongs to the
+    // system. The app is a single activity, so the system behavior for Back
+    // at the root is moving the task back (not finishing) — this is the
+    // hierarchy's terminal step, reachable only after every pop level above.
+    val context = LocalContext.current
+    val onBack: () -> Unit = {
+        when {
+            backStack.size > 1 -> backStack.removeLastOrNull()
+            currentRoot == Route.Feeds || currentRoot == Route.Settings ->
+                switchRoot(Route.Reading(null))
+            else -> context.findActivity()?.moveTaskToBack(true)
+        }
+    }
+
+    val adaptiveInfo = currentWindowAdaptiveInfo()
+
+    // UI-CONTRACT §3.1: at font scale >= 1.6 the available detail width is
+    // <320dp, so Read uses one-pane list-detail even on wide windows. The
+    // rail remains (content-availability decision, not device-name).
+    val fontScale = LocalDensity.current.fontScale
+    val baseDirective = calculatePaneScaffoldDirective(adaptiveInfo)
+    val scaffoldDirective =
+        if (fontScale >= FONT_SCALE_ONE_PANE_THRESHOLD) {
+            baseDirective.copy(maxHorizontalPartitions = 1)
+        } else {
+            baseDirective
+        }
 
     val navigator =
         rememberListDetailPaneScaffoldNavigator<ArticleData>(
@@ -80,7 +174,38 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
             isDestinationHistoryAware = false,
         )
 
-    SharedTransitionLayout {
+    NavigationSuiteScaffold(
+        layoutType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo),
+        navigationSuiteItems = {
+            item(
+                selected = currentRoot == Route.Reading(null),
+                onClick = { switchRoot(Route.Reading(null)) },
+                icon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.Article,
+                        contentDescription = null,
+                    )
+                },
+                label = { Text(stringResource(R.string.read)) },
+            )
+            item(
+                selected = currentRoot == Route.Feeds,
+                onClick = { switchRoot(Route.Feeds) },
+                icon = {
+                    Icon(imageVector = Icons.Outlined.Folder, contentDescription = null)
+                },
+                label = { Text(stringResource(R.string.feeds)) },
+            )
+            item(
+                selected = currentRoot == Route.Settings,
+                onClick = { switchRoot(Route.Settings) },
+                icon = {
+                    Icon(imageVector = Icons.Outlined.Settings, contentDescription = null)
+                },
+                label = { Text(stringResource(R.string.settings)) },
+            )
+        },
+    ) {
         NavDisplay(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
             backStack = backStack,
@@ -109,15 +234,13 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                 ) togetherWith
                     materialSharedAxisXOut(targetOffsetX = { (it * INITIAL_OFFSET_FACTOR).toInt() })
             },
-            onBack = { backStack.removeLastOrNull() },
+            onBack = { onBack() },
             entryProvider = { key ->
                 when (key) {
                     Route.Feeds -> {
                         NavEntry(key) {
                             FeedsPage(
                                 subscribeViewModel = subscribeViewModel,
-                                sharedTransitionScope = this@SharedTransitionLayout,
-                                animatedVisibilityScope = LocalNavAnimatedContentScope.current,
                                 navigateToSettings = { backStack.add(Route.Settings) },
                                 navigationToFlow = { backStack.add(Route.Reading(null)) },
                                 navigateToAccountList = { backStack.add(Route.Accounts) },
@@ -146,34 +269,12 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                             ArticleListReaderPage(
                                 scaffoldDirective = scaffoldDirective,
                                 navigator = navigator,
-                                sharedTransitionScope = this@SharedTransitionLayout,
-                                animatedVisibilityScope = LocalNavAnimatedContentScope.current,
                                 viewModel = viewModel,
                                 onBack = onBack,
                                 onNavigateToStylePage = { backStack.add(Route.ReadingPageStyle) },
                             )
                         }
                     }
-                    //                    is Route.Reading -> {
-                    //                        NavEntry(key) {
-                    //                            val articleId = key.articleId
-                    //
-                    //                            val readingViewModel: ReadingViewModel =
-                    //                                hiltViewModel<
-                    //                                    ReadingViewModel,
-                    //                                    ReadingViewModel.ReadingViewModelFactory,
-                    //                                > { factory ->
-                    //                                    factory.create(articleId.toString(), null)
-                    //                                }
-                    //
-                    //                            ReadingPage(
-                    //                                readingViewModel = readingViewModel,
-                    //                                onBack = onBack,
-                    //                                onNavigateToStylePage = {
-                    // backStack.add(Route.ReadingPageStyle) },
-                    //                            )
-                    //                        }
-                    //                    }
                     Route.Startup -> {
                         NavEntry(key) {
                             StartupPage(onNavigateToFeeds = { backStack.add(Route.Feeds) })
@@ -196,13 +297,14 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 navigateToMigration = { backStack.add(Route.Migration) },
                             )
                         }
-                    Route.Migration ->
+                    Route.Migration -> {
                         NavEntry(key) {
                             me.ash.reader.ui.page.settings.migration.MigrationPage(
                                 onBack = onBack,
                             )
                         }
-                    Route.Rules ->
+                    }
+                    Route.Rules -> {
                         NavEntry(key) {
                             RulesPage(
                                 viewModel = hiltViewModel<RulesViewModel>(),
@@ -210,7 +312,8 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 onNavigateToEdit = { backStack.add(Route.RuleEdit(it)) },
                             )
                         }
-                    is Route.RuleEdit ->
+                    }
+                    is Route.RuleEdit -> {
                         NavEntry(key) {
                             RuleEditPage(
                                 ruleId = key.ruleId,
@@ -218,14 +321,16 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 onBack = onBack,
                             )
                         }
-                    Route.Downloads ->
+                    }
+                    Route.Downloads -> {
                         NavEntry(key) {
                             me.ash.reader.ui.page.settings.downloads.DownloadsPage(
                                 viewModel = hiltViewModel<me.ash.reader.ui.page.settings.downloads.DownloadsViewModel>(),
                                 onBack = onBack,
                             )
                         }
-                    Route.Accounts ->
+                    }
+                    Route.Accounts -> {
                         NavEntry(key) {
                             AccountsPage(
                                 onBack = onBack,
@@ -235,7 +340,8 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 },
                             )
                         }
-                    is Route.AccountDetails ->
+                    }
+                    is Route.AccountDetails -> {
                         NavEntry(key) {
                             AccountDetailsPage(
                                 viewModel =
@@ -246,7 +352,8 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 navigateToFeeds = { backStack.add(Route.Feeds) },
                             )
                         }
-                    Route.AddAccounts ->
+                    }
+                    Route.AddAccounts -> {
                         NavEntry(key) {
                             AddAccountsPage(
                                 onBack = onBack,
@@ -255,7 +362,8 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 },
                             )
                         }
-                    Route.ColorAndStyle ->
+                    }
+                    Route.ColorAndStyle -> {
                         NavEntry(key) {
                             ColorAndStylePage(
                                 onBack = onBack,
@@ -267,6 +375,7 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 },
                             )
                         }
+                    }
                     Route.DarkTheme -> NavEntry(key) { DarkThemePage(onBack = onBack) }
                     Route.FeedsPageStyle -> NavEntry(key) { FeedsPageStylePage(onBack = onBack) }
                     Route.FlowPageStyle -> NavEntry(key) { FlowPageStylePage(onBack = onBack) }

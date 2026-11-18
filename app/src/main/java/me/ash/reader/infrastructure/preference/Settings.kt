@@ -20,6 +20,8 @@ data class Settings(
     val darkTheme: DarkThemePreference = DarkThemePreference.default,
     val amoledDarkTheme: AmoledDarkThemePreference = AmoledDarkThemePreference.default,
     val basicFonts: BasicFontsPreference = BasicFontsPreference.default,
+    // Wave H: dynamic color OFF by default, API 31+ only (UI-CONTRACT §1.3)
+    val dynamicColor: DynamicColorPreference = DynamicColorPreference.default,
 
     // Feeds page
     val feedsFilterBarStyle: FeedsFilterBarStylePreference = FeedsFilterBarStylePreference.default,

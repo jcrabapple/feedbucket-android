@@ -138,6 +138,8 @@ sealed interface PreferencesKey {
         const val darkTheme = "darkTheme"
         const val amoledDarkTheme = "amoledDarkTheme"
         const val basicFonts = "basicFonts"
+        // Wave H: dynamic color (OFF by default, API 31+)
+        const val dynamicColor = "dynamicColor"
 
         // Feeds page
         const val feedsFilterBarStyle = "feedsFilterBarStyle"
@@ -306,6 +308,8 @@ data class DataStoreKey<T>(val key: Preferences.Key<T>, val type: Class<T>) {
         const val darkTheme = "darkTheme"
         const val amoledDarkTheme = "amoledDarkTheme"
         const val basicFonts = "basicFonts"
+        // Wave H: dynamic color (OFF by default, API 31+)
+        const val dynamicColor = "dynamicColor"
 
         // Feeds page
         const val feedsFilterBarStyle = "feedsFilterBarStyle"
@@ -400,6 +404,8 @@ data class DataStoreKey<T>(val key: Preferences.Key<T>, val type: Class<T>) {
                 amoledDarkTheme to
                     DataStoreKey(booleanPreferencesKey(amoledDarkTheme), Boolean::class.java),
                 basicFonts to DataStoreKey(intPreferencesKey(basicFonts), Int::class.java),
+                dynamicColor to
+                    DataStoreKey(booleanPreferencesKey(dynamicColor), Boolean::class.java),
                 // Feeds page
                 feedsFilterBarStyle to
                     DataStoreKey(intPreferencesKey(feedsFilterBarStyle), Int::class.java),

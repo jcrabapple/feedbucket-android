@@ -96,7 +96,7 @@ fun BottomBar(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         CanBeDisabledIconButton(
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(48.dp),
                             disabled = false,
                             imageVector = if (isUnread) {
                                 Icons.Filled.FiberManualRecord
@@ -114,7 +114,7 @@ fun BottomBar(
                             onUnread(!isUnread)
                         }
                         CanBeDisabledIconButton(
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(48.dp),
                             disabled = false,
                             imageVector = if (isStarred) {
                                 Icons.Rounded.Star
@@ -133,7 +133,7 @@ fun BottomBar(
                         }
                         CanBeDisabledIconButton(
                             disabled = !isNextArticleAvailable,
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(48.dp),
                             imageVector = Icons.Rounded.ExpandMore,
                             contentDescription = "Next Article",
                             tint = MaterialTheme.colorScheme.outline,
@@ -144,7 +144,7 @@ fun BottomBar(
                         ttsButton()
                         CanBeDisabledIconButton(
                             disabled = false,
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(48.dp),
                             imageVector = if (isFullContent) {
                                 Icons.AutoMirrored.Rounded.Article
                             } else {

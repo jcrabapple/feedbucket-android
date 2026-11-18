@@ -56,6 +56,7 @@ import me.ash.reader.infrastructure.preference.CustomPrimaryColorPreference
 import me.ash.reader.infrastructure.preference.LocalBasicFonts
 import me.ash.reader.infrastructure.preference.LocalCustomPrimaryColor
 import me.ash.reader.infrastructure.preference.LocalDarkTheme
+import me.ash.reader.infrastructure.preference.LocalDynamicColor
 import me.ash.reader.infrastructure.preference.LocalThemeIndex
 import me.ash.reader.infrastructure.preference.ThemeIndexPreference
 import me.ash.reader.infrastructure.preference.not
@@ -201,6 +202,29 @@ fun ColorAndStylePage(
                             activated = darkTheme.isDarkTheme()
                         ) {
                             darkThemeNot.put(context, scope)
+                        }
+                    }
+                    // Wave H (UI-CONTRACT §6.11): dynamic color, OFF by
+                    // default, API 31+ only; falls back to the static
+                    // FeedBucket schemes when off or unsupported.
+                    val dynamicColorPref = LocalDynamicColor.current
+                    val dynamicColorSupported =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    SettingItem(
+                        title = stringResource(R.string.dynamic_color),
+                        desc =
+                            stringResource(R.string.dynamic_color_desc) +
+                                if (dynamicColorSupported) "" else " (${context.getString(R.string.off)})",
+                        separatedActions = true,
+                        onClick = {},
+                    ) {
+                        RYSwitch(
+                            activated = dynamicColorPref.value && dynamicColorSupported,
+                            enable = dynamicColorSupported,
+                        ) {
+                            if (dynamicColorSupported) {
+                                (!dynamicColorPref).put(context, scope)
+                            }
                         }
                     }
                     SettingItem(

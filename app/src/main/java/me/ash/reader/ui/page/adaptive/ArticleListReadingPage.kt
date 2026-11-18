@@ -2,15 +2,10 @@ package me.ash.reader.ui.page.adaptive
 
 import android.os.Parcelable
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.LocalBackgroundTextMeasurementExecutor
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.layout.AnimatedPane
@@ -41,26 +36,28 @@ import kotlinx.parcelize.Parcelize
 import me.ash.reader.ui.component.reader.ExpandedContentWidth
 import me.ash.reader.ui.component.reader.LocalTextContentWidth
 import me.ash.reader.ui.component.reader.MediumContentWidth
+import me.ash.reader.ui.ext.MotionExt
 import me.ash.reader.ui.page.home.flow.FlowPage
 import me.ash.reader.ui.page.home.reading.ReadingPage
 import timber.log.Timber
 
 @Parcelize data class ArticleData(val articleId: String, val listIndex: Int? = null) : Parcelable
 
-@OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun ArticleListReaderPage(
     modifier: Modifier = Modifier,
     scaffoldDirective: PaneScaffoldDirective,
     navigator: ThreePaneScaffoldNavigator<ArticleData>,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
     viewModel: ArticleListReaderViewModel,
     onBack: () -> Unit,
     onNavigateToStylePage: () -> Unit,
 ) {
 
     val scope = rememberCoroutineScope()
+
+    // Wave H (D17/§7): reduced motion removes spatial pane transitions.
+    val reducedMotion = MotionExt.rememberReducedMotion()
 
     val backBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
 
@@ -121,7 +118,9 @@ fun ArticleListReaderPage(
         navigator = navigator,
         modifier = modifier,
         defaultBackBehavior = backBehavior,
-        paneExpansionDragHandle = { Spacer(modifier = Modifier.width(2.dp)) },
+        // Wave H (UI-CONTRACT §3.1): no draggable splitter; the pane
+        // expansion stays programmatic (list hide/show only).
+        paneExpansionDragHandle = null,
         paneExpansionState = paneExpansionState,
         listPane = {
             if (navigationAction == NavigationAction.ExpandList) {
@@ -131,8 +130,10 @@ fun ArticleListReaderPage(
                 }
             }
             AnimatedPane(
-                enterTransition = motionDataProvider.calculateEnterTransition(paneRole),
-                exitTransition = motionDataProvider.calculateExitTransition(paneRole),
+                enterTransition =
+                    motionDataProvider.calculateEnterTransition(paneRole, reducedMotion),
+                exitTransition =
+                    motionDataProvider.calculateExitTransition(paneRole, reducedMotion),
             ) {
                 CompositionLocalProvider(
                     LocalBackgroundTextMeasurementExecutor provides
@@ -140,8 +141,6 @@ fun ArticleListReaderPage(
                 ) {
                     Box(modifier = Modifier.alpha(animatedListAlpha)) {
                         FlowPage(
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
                             viewModel = viewModel,
                             onNavigateUp = onBack,
                             isTwoPane = isTwoPane,
@@ -160,8 +159,10 @@ fun ArticleListReaderPage(
         },
         detailPane = {
             AnimatedPane(
-                enterTransition = motionDataProvider.calculateEnterTransition(paneRole),
-                exitTransition = motionDataProvider.calculateExitTransition(paneRole),
+                enterTransition =
+                    motionDataProvider.calculateEnterTransition(paneRole, reducedMotion),
+                exitTransition =
+                    motionDataProvider.calculateExitTransition(paneRole, reducedMotion),
             ) {
                 val contentKey = navigator.currentDestination?.contentKey
                 LaunchedEffect(contentKey) {
@@ -218,3 +219,4 @@ fun ArticleListReaderPage(
         },
     )
 }
+

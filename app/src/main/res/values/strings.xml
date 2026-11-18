@@ -27,6 +27,7 @@
         <item quantity="other">%1$d unread items in this scope will be marked as read.</item>
     </plurals>
     <string name="feeds">Feeds</string>
+    <string name="read">Read</string>
     <string name="syncing">Syncing…</string>
     <string name="loading">Loading…</string>
     <string name="expand_less">Shrink</string>
@@ -151,6 +152,8 @@
     <string name="appearance">Appearance</string>
     <string name="style">Style</string>
     <string name="dark_theme">Dark theme</string>
+    <string name="dynamic_color">Dynamic color</string>
+    <string name="dynamic_color_desc">Use the device wallpaper palette (Android 12+). Falls back to the FeedBucket palette when off or unsupported.</string>
     <string name="use_device_theme">Use device theme</string>
     <string name="on">On</string>
     <string name="off">Off</string>

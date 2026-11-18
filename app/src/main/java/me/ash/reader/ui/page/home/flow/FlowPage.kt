@@ -5,8 +5,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
@@ -137,14 +135,11 @@ import me.ash.reader.ui.page.home.reading.rememberPullToLoadState
 
 @OptIn(
     ExperimentalMaterial3Api::class,
-    ExperimentalSharedTransitionApi::class,
     ExperimentalMaterialApi::class,
     FlowPreview::class,
 )
 @Composable
 fun FlowPage(
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
     isTwoPane: Boolean,
     viewModel: ArticleListReaderViewModel,
     onNavigateUp: () -> Unit,
@@ -968,13 +963,6 @@ fun FlowPage(
                         }
                     }
                     FilterBar(
-                        modifier =
-                            with(sharedTransitionScope) {
-                                Modifier.sharedElement(
-                                    sharedContentState = rememberSharedContentState("filterBar"),
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                )
-                            },
                         filter = filterUiState.filter,
                         filters =
                             if (hideRecentlyRead) {

@@ -214,6 +214,7 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.navigation3)
     implementation(libs.navigationevent)
     implementation(libs.compose.material3.adaptive.navigation)
+    implementation(libs.compose.material3.adaptive.navigation.suite)
     implementation(libs.compose.material3.adaptive.layout)
 
     implementation(libs.kotlinx.serialization.core)
