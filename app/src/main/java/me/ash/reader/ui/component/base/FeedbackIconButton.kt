@@ -3,6 +3,7 @@ package me.ash.reader.ui.component.base
 import android.view.HapticFeedbackConstants
 import android.view.SoundEffectConstants
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -47,7 +48,11 @@ fun FeedbackIconButton(
             }
         }
     ) {
+        // Wave H (UI-CONTRACT §3.3): app-bar actions are 48x48dp targets.
+        // material3 1.4.0's IconButton lays out at 40dp, so enforce the
+        // contract floor explicitly regardless of the M3 version skew.
         IconButton(
+            modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp),
             enabled = enabled,
             onClick = {
                 if (isHaptic == true) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)

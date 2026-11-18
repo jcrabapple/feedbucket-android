@@ -83,12 +83,13 @@ class M3ComponentTargetInstrumentedTest {
                         onClick = {},
                         label = { Text("Unread") },
                     )
-                    IconButton(modifier = Modifier.testTag("app_bar_action"), onClick = {}) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Back to Unread",
-                        )
-                    }
+                    // App chrome action (the component app bars actually use);
+                    // enforces the contract 48x48dp floor in FeedbackIconButton.
+                    me.ash.reader.ui.component.base.FeedbackIconButton(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Back to Unread",
+                        onClick = {},
+                    )
                     Button(
                         modifier = Modifier.testTag("primary_button").heightIn(min = 48.dp),
                         onClick = {},
@@ -134,8 +135,15 @@ class M3ComponentTargetInstrumentedTest {
         composeTestRule.waitForIdle()
 
         assertTrue("scope chip height ${dpHeight("scope_chip")}dp < 48", dpHeight("scope_chip") >= 48f)
-        assertTrue("app bar action ${dpWidth("app_bar_action")}dp < 48", dpWidth("app_bar_action") >= 48f)
-        assertTrue("app bar action height < 48", dpHeight("app_bar_action") >= 48f)
+        val appBarBounds =
+            composeTestRule
+                .onNodeWithContentDescription("Back to Unread")
+                .fetchSemanticsNode()
+                .boundsInRoot
+        val appBarW = appBarBounds.width / composeTestRule.density.density
+        val appBarH = appBarBounds.height / composeTestRule.density.density
+        assertTrue("app bar action ${appBarW}dp < 48", appBarW >= 48f)
+        assertTrue("app bar action height ${appBarH}dp < 48", appBarH >= 48f)
         assertTrue("primary button height < 48", dpHeight("primary_button") >= 48f)
         assertTrue("star toggle width < 48", dpWidth("star_toggle") >= 48f)
         assertTrue("star toggle height < 48", dpHeight("star_toggle") >= 48f)
@@ -153,7 +161,11 @@ class M3ComponentTargetInstrumentedTest {
                         contentDescription = "Back to Unread",
                     )
                 }
-                IconToggleButton(checked = true, onCheckedChange = {}) {
+                IconToggleButton(
+                    modifier = Modifier.testTag("star_toggle_probe"),
+                    checked = true,
+                    onCheckedChange = {},
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Star,
                         contentDescription = null,
@@ -172,15 +184,11 @@ class M3ComponentTargetInstrumentedTest {
             .onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState))
             .assertIsDisplayed()
         composeTestRule
-            .onNode(
-                SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Starred"),
-                useUnmergedTree = true,
-            )
+            .onNodeWithTag("star_toggle_probe")
+            .assertIsDisplayed()
             .assert(
-                SemanticsMatcher.expectValue(
-                    SemanticsProperties.ToggleableState,
-                    ToggleableState.On,
-                )
+                SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On)
             )
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Starred"))
     }
 }
