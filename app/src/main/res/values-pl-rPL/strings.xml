@@ -134,7 +134,6 @@
     <string name="flow_page">Strona flow</string>
     <string name="reading_page">Czytnik artykułów</string>
     <string name="open_source_licenses">Licencje open source</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Lista zmian</string>
     <string name="update">Aktualizuj</string>
     <string name="skip_this_version">Pomiń tę wersję</string>

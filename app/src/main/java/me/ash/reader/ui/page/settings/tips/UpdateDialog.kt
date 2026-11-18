@@ -33,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import me.ash.reader.R
 import me.ash.reader.infrastructure.preference.*
 import me.ash.reader.infrastructure.net.Download
+import me.ash.reader.infrastructure.net.FeedBucketUpdate
 import me.ash.reader.ui.component.base.RYDialog
 import me.ash.reader.ui.ext.collectAsStateValue
 import me.ash.reader.ui.ext.installLatestApk
@@ -43,7 +44,7 @@ fun UpdateDialog(
     updateViewModel: UpdateViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val githubLink = stringResource(R.string.github_link)
+    val releaseRepo = stringResource(R.string.feedbucket_release_repo)
     val updateUiState = updateViewModel.updateUiState.collectAsStateValue()
     val downloadState = updateUiState.downloadFlow.collectAsState(initial = Download.NotYet).value
     val scope = rememberCoroutineScope { Dispatchers.IO }
@@ -108,7 +109,10 @@ fun UpdateDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    context.openURL("$githubLink/releases/latest", OpenLinkPreference.AutoPreferCustomTabs)
+                    context.openURL(
+                        FeedBucketUpdate.releasesPageUrl(releaseRepo),
+                        OpenLinkPreference.AutoPreferCustomTabs,
+                    )
                     // Disable automatic updates in F-Droid
 //                    if (downloadState !is Download.Progress) {
 //                        updateViewModel.dispatch(

@@ -170,7 +170,6 @@
     <string name="tonal_elevation">Tónusos emelkedés</string>
     <string name="reading_page">Olvasási oldal</string>
     <string name="open_source_licenses">Nyílt forráskódú licencek</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Változáslista</string>
     <string name="update">Frissítés</string>
     <string name="skip_this_version">Ezen verzió kihagyása</string>

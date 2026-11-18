@@ -133,7 +133,6 @@
     <string name="reading_page">Página de leitura</string>
     <string name="feeds_page">Página das fontes</string>
     <string name="open_source_licenses">Licenças de código aberto</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Registo de alterações</string>
     <string name="update">Atualizar</string>
     <string name="checking_updates">A verificar atualizações…</string>

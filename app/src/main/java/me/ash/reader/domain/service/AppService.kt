@@ -6,12 +6,14 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.withContext
 import me.ash.reader.R
 import me.ash.reader.domain.model.general.toVersion
 import me.ash.reader.infrastructure.di.IODispatcher
 import me.ash.reader.infrastructure.di.MainDispatcher
 import me.ash.reader.infrastructure.net.Download
+import me.ash.reader.infrastructure.net.FeedBucketUpdate
 import me.ash.reader.infrastructure.net.NetworkDataSource
 import me.ash.reader.infrastructure.net.downloadToFileWithProgress
 import me.ash.reader.infrastructure.preference.*
@@ -33,8 +35,12 @@ class AppService @Inject constructor(
 ) {
 
     suspend fun checkUpdate(showToast: Boolean = true): Boolean? = withContext(ioDispatcher) {
+        // Debug builds never check for (or install) updates.
+        if (context.packageName.endsWith(".debug")) return@withContext null
         try {
-            val response = networkDataSource.getReleaseLatest(context.getString(R.string.update_link))
+            val response = networkDataSource.getReleases(
+                FeedBucketUpdate.releaseApiUrl(context.getString(R.string.feedbucket_release_repo))
+            )
             when {
                 response.code() == 403 -> {
                     withContext(mainDispatcher) {
@@ -52,22 +58,16 @@ class AppService @Inject constructor(
             }
             val skipVersion = context.skipVersionNumber.toVersion()
             val currentVersion = context.getCurrentVersion()
-            val latest = response.body()!!
-            val latestVersion = latest.tag_name.toVersion()
-//            val latestVersion = "1.0.0".toVersion()
-            val latestLog = latest.body ?: ""
-            val latestPublishDate = latest.published_at ?: latest.created_at ?: ""
-            val latestSize = latest.assets?.first()?.size ?: 0
-            val latestDownloadUrl = latest.assets?.first()?.browser_download_url ?: ""
+            val candidate = FeedBucketUpdate.pickUpdate(response.body()!!)
 
             Log.i("RLog", "current version $currentVersion")
-            if (latestVersion.whetherNeedUpdate(currentVersion, skipVersion)) {
-                Log.i("RLog", "new version $latestVersion")
-                NewVersionNumberPreference.put(context, this, latestVersion.toString())
-                NewVersionLogPreference.put(context, this, latestLog)
-                NewVersionPublishDatePreference.put(context, this, latestPublishDate)
-                NewVersionSizePreference.put(context, this, latestSize.formatSize())
-                NewVersionDownloadUrlPreference.put(context, this, latestDownloadUrl)
+            if (candidate != null && candidate.version.whetherNeedUpdate(currentVersion, skipVersion)) {
+                Log.i("RLog", "new version ${candidate.version}")
+                NewVersionNumberPreference.put(context, this, candidate.version.toString())
+                NewVersionLogPreference.put(context, this, candidate.log)
+                NewVersionPublishDatePreference.put(context, this, candidate.publishDate)
+                NewVersionSizePreference.put(context, this, candidate.size.formatSize())
+                NewVersionDownloadUrlPreference.put(context, this, candidate.apkUrl)
                 true
             } else {
                 false
@@ -86,15 +86,39 @@ class AppService @Inject constructor(
         withContext(ioDispatcher) {
             Log.i("RLog", "downloadFile start: $url")
             try {
-                return@withContext networkDataSource.downloadFile(url)
+                networkDataSource.downloadFile(url)
                     .downloadToFileWithProgress(context.getLatestApk())
+                    .transform { download ->
+                        if (download is Download.Finished) {
+                            // The sidecar asset is the APK asset name + ".sha256"
+                            // (sibling release assets, enforced by FeedBucketUpdate.pickUpdate).
+                            val verified = try {
+                                FeedBucketUpdate.verifyDownload(
+                                    download.file,
+                                    networkDataSource.downloadFile("$url.sha256").string(),
+                                )
+                            } catch (e: Exception) {
+                                Log.e("RLog", "downloadFile: sidecar fetch failed: ${e.message}")
+                                download.file.delete()
+                                false
+                            }
+                            if (verified) {
+                                emit(download)
+                            } else {
+                                Log.e("RLog", "downloadFile: SHA-256 mismatch, download discarded")
+                                emit(Download.NotYet)
+                            }
+                        } else {
+                            emit(download)
+                        }
+                    }
             } catch (e: Exception) {
                 e.printStackTrace()
                 Log.e("RLog", "downloadFile: ${e.message}")
                 withContext(mainDispatcher) {
                     context.showToast(context.getString(R.string.download_failure))
                 }
+                emptyFlow()
             }
-            emptyFlow()
         }
 }

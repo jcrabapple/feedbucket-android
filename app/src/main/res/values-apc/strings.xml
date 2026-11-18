@@ -219,7 +219,6 @@
     <string name="upper_case">كاپيتل</string>
     <string name="reading_fonts">فونتات القراية</string>
     <string name="open_source_licenses">ترخيصات الپروگرامات المفتوحة المصدر</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="always_expand">دايمًا كبر</string>
     <string name="top">الأعلى</string>
     <string name="icons_and_labels">الأيكونات وال عناوين</string>

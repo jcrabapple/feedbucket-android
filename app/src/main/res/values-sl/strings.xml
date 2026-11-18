@@ -176,7 +176,6 @@
     <string name="color_and_style">Barva in slog</string>
     <string name="color_and_style_desc">Tema, barvni slog, velikost pisave</string>
     <string name="help_translate">Pomoč pri prevajanju</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="update">Posodobitev</string>
     <string name="checking_updates">Preverjanje posodobitev…</string>
     <string name="is_latest_version">To je najnovejša različica</string>

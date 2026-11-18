@@ -133,7 +133,6 @@
     <string name="feeds_page">Bảng tin</string>
     <string name="tonal_elevation">Tông màu</string>
     <string name="open_source_licenses">Giấy phép mã nguồn mở</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="reading_page">Bài viết</string>
     <string name="flow_page">Danh sách bài viết</string>
     <string name="change_log">Có gì mới</string>

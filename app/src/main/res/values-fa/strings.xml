@@ -115,7 +115,6 @@
     <string name="flow_page">صفحه جریان</string>
     <string name="reading_page">صفحه خواندن</string>
     <string name="open_source_licenses">لایسنس های متن باز</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">تغییرات</string>
     <string name="update">بروزرسانی</string>
     <string name="skip_this_version">رد کردن این نسخه</string>

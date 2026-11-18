@@ -102,7 +102,6 @@
     <string name="icons">Иконки</string>
     <string name="horizontal_padding">Горизонтальный отступ</string>
     <string name="on_start">На старте</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="open_source_licenses">Лицензии свободного ПО</string>
     <string name="reading_page">Страница чтения</string>
     <string name="reading_fonts">Шрифты чтения</string>

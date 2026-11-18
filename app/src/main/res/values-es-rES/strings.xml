@@ -131,7 +131,6 @@
     <string name="flow_page">Página de flujo</string>
     <string name="reading_page">Página de lectura</string>
     <string name="open_source_licenses">Licencias de código abierto</string>
-    <string name="update_link">https://api.github.com/repos/jcrabapple/feedbucket-android/releases/latest</string>
     <string name="change_log">Registro de cambios</string>
     <string name="update">Actualizar</string>
     <string name="skip_this_version">Saltar esta version</string>

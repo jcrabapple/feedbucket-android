@@ -17,7 +17,7 @@ import java.io.File
 interface NetworkDataSource {
 
     @GET
-    suspend fun getReleaseLatest(@Url url: String): Response<LatestRelease>
+    suspend fun getReleases(@Url url: String): Response<List<LatestRelease>>
 
     @GET
     @Streaming
