@@ -30,6 +30,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import me.ash.reader.BuildConfig
 import me.ash.reader.domain.model.download.DownloadPolicy
+import me.ash.reader.domain.model.extract.ExtractPolicy
 import okhttp3.Cache
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -53,6 +54,20 @@ import javax.net.ssl.X509TrustManager
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class DownloadHttpClient
+
+/**
+ * E18 (SPEC-EXTRACT-v1) — dedicated client for extraction fetches:
+ * connect 15s / read 30s / call 60s, redirects NOT followed (the X3
+ * coordinator walks them manually under the per-hop E17 SSRF guard),
+ * NO HTTP cache (an extraction is a fresh publisher fetch every time).
+ * The EXISTING [UserAgentInterceptor] is attached unchanged — the app's
+ * regular UA, never a crawler/spoofed UA (E1 hard wall). The pre-existing
+ * `trustAllCerts = true` posture of [cachingHttpClient] is inherited
+ * unchanged and explicitly OUT of scope for this upgrade (E18 note).
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ExtractHttpClient
 
 /**
  * Provides singleton [OkHttpClient] for the application.
@@ -90,6 +105,31 @@ object OkHttpClientModule {
             readTimeoutSecs = DownloadPolicy.READ_TIMEOUT_SECS,
         ).newBuilder()
             .callTimeout(DownloadPolicy.CALL_TIMEOUT_SECS, TimeUnit.SECONDS)
+            .addNetworkInterceptor(UserAgentInterceptor)
+            .build()
+
+    /**
+     * E18 — dedicated extraction client with the exact extraction timeouts
+     * (connect 15 s, read 30 s, call 60 s), NO cache, and manual redirects
+     * (`followRedirects(false)` + `followSslRedirects(false)` — the X3
+     * coordinator walks hops under the per-hop E17 guard). UA interceptor
+     * unchanged (E1: the app's existing User-Agent, never a spoofed one).
+     */
+    @Provides
+    @Singleton
+    @ExtractHttpClient
+    fun provideExtractOkHttpClient(
+        @ApplicationContext context: Context,
+    ): OkHttpClient =
+        cachingHttpClient(
+            context = context,
+            cacheDirectory = null,
+            connectTimeoutSecs = ExtractPolicy.CONNECT_TIMEOUT_SECS,
+            readTimeoutSecs = ExtractPolicy.READ_TIMEOUT_SECS,
+        ).newBuilder()
+            .callTimeout(ExtractPolicy.CALL_TIMEOUT_SECS, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
             .addNetworkInterceptor(UserAgentInterceptor)
             .build()
 }
