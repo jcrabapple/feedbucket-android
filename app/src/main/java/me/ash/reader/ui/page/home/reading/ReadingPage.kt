@@ -3,9 +3,6 @@ package me.ash.reader.ui.page.home.reading
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.VisibilityThreshold
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -44,6 +41,7 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import me.ash.reader.ui.ext.MotionExt
 import kotlin.math.abs
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -68,7 +66,12 @@ import me.ash.reader.ui.page.home.reading.tts.TtsButton
 private const val UPWARD = 1
 private const val DOWNWARD = -1
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterialApi::class, FlowPreview::class)
+@OptIn(
+    ExperimentalFoundationApi::class,
+    ExperimentalMaterialApi::class,
+    FlowPreview::class,
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+)
 @Composable
 fun ReadingPage(
     //    navController: NavHostController,
@@ -150,55 +153,57 @@ fun ReadingPage(
                 val isPreviousArticleAvailable = readerState.previousArticle != null
 
                 if (readerState.articleId != null) {
+                    // Wave H (D17/§7): article deltas use the product-wide
+                    // standard motion scheme; reduced motion cross-fades.
+                    val reducedMotion = MotionExt.rememberReducedMotion()
+                    val spatialSpecEnter =
+                        MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
+                    val spatialSpecExit =
+                        MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
                     // Content
                     AnimatedContent(
                         targetState = readerState,
                         transitionSpec = {
-                            val direction =
-                                when {
-                                    initialState.nextArticle?.articleId == targetState.articleId ->
-                                        UPWARD
-                                    initialState.previousArticle?.articleId ==
-                                        targetState.articleId -> DOWNWARD
-                                    initialState.articleId == targetState.articleId -> {
-                                        when (targetState.content) {
-                                            is ReaderState.Description -> DOWNWARD
-                                            else -> UPWARD
+                            if (reducedMotion) {
+                                MotionExt.fadeEnter() togetherWith
+                                    MotionExt.fadeExit()
+                            } else {
+                                val direction =
+                                    when {
+                                        initialState.nextArticle?.articleId == targetState.articleId ->
+                                            UPWARD
+                                        initialState.previousArticle?.articleId ==
+                                            targetState.articleId -> DOWNWARD
+                                        initialState.articleId == targetState.articleId -> {
+                                            when (targetState.content) {
+                                                is ReaderState.Description -> DOWNWARD
+                                                else -> UPWARD
+                                            }
                                         }
-                                    }
 
-                                    else -> UPWARD
-                                }
-                            val exit = 100
-                            val enter = exit * 2
-                            (slideInVertically(
-                                initialOffsetY = { (it * 0.2f * direction).toInt() },
-                                animationSpec =
-                                    spring(
-                                        dampingRatio = .9f,
-                                        stiffness = Spring.StiffnessLow,
-                                        visibilityThreshold = IntOffset.VisibilityThreshold,
-                                    ),
-                            ) +
-                                fadeIn(
-                                    tween(
-                                        delayMillis = exit,
-                                        durationMillis = enter,
-                                        easing = LinearOutSlowInEasing,
-                                    )
-                                )) togetherWith
-                                (slideOutVertically(
-                                    targetOffsetY = { (it * -0.2f * direction).toInt() },
-                                    animationSpec =
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessLow,
-                                            visibilityThreshold = IntOffset.VisibilityThreshold,
-                                        ),
+                                        else -> UPWARD
+                                    }
+                                val exit = 100
+                                val enter = exit * 2
+                                (slideInVertically(
+                                    initialOffsetY = { (it * 0.2f * direction).toInt() },
+                                    animationSpec = spatialSpecEnter,
                                 ) +
-                                    fadeOut(
-                                        tween(durationMillis = exit, easing = FastOutLinearInEasing)
-                                    ))
+                                    fadeIn(
+                                        tween(
+                                            delayMillis = exit,
+                                            durationMillis = enter,
+                                            easing = LinearOutSlowInEasing,
+                                        )
+                                    )) togetherWith
+                                    (slideOutVertically(
+                                        targetOffsetY = { (it * -0.2f * direction).toInt() },
+                                        animationSpec = spatialSpecExit,
+                                    ) +
+                                        fadeOut(
+                                            tween(durationMillis = exit, easing = FastOutLinearInEasing)
+                                        ))
+                            }
                         },
                         label = "",
                     ) {
