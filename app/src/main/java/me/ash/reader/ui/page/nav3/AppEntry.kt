@@ -41,6 +41,8 @@ import me.ash.reader.ui.page.adaptive.ArticleData
 import me.ash.reader.ui.page.adaptive.ArticleListReaderPage
 import me.ash.reader.ui.page.adaptive.ArticleListReaderViewModel
 import me.ash.reader.ui.page.home.feeds.FeedsPage
+import me.ash.reader.ui.page.home.feeds.detail.FeedDetailPage
+import me.ash.reader.ui.page.home.feeds.detail.GroupDetailPage
 import me.ash.reader.ui.page.home.feeds.subscribe.SubscribeViewModel
 import me.ash.reader.ui.page.nav3.key.Route
 import me.ash.reader.ui.page.settings.SettingsPage
@@ -246,6 +248,28 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 navigateToAccountDetail = {
                                     backStack.add(Route.AccountDetails(it))
                                 },
+                                navigateToFeedDetail = {
+                                    backStack.add(Route.FeedDetail(it))
+                                },
+                                navigateToGroupDetail = {
+                                    backStack.add(Route.GroupDetail(it))
+                                },
+                            )
+                        }
+                    }
+                    is Route.FeedDetail -> {
+                        NavEntry(key) {
+                            FeedDetailPage(
+                                feedId = key.feedId,
+                                onBack = onBack,
+                            )
+                        }
+                    }
+                    is Route.GroupDetail -> {
+                        NavEntry(key) {
+                            GroupDetailPage(
+                                groupId = key.groupId,
+                                onBack = onBack,
                             )
                         }
                     }

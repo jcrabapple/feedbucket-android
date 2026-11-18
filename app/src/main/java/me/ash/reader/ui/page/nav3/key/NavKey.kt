@@ -12,6 +12,12 @@ sealed interface Route : NavKey {
     // Home
     @Serializable data object Feeds : Route
 
+    // Feed / group detail (UI-CONTRACT §2.2: full management and displaced
+    // drawer actions; parent Feeds, Back pops to Feeds per §2.3.6)
+    @Serializable data class FeedDetail(val feedId: String) : Route
+
+    @Serializable data class GroupDetail(val groupId: String) : Route
+
     //    @Serializable data object Flow : Route
 
     @Serializable

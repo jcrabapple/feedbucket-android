@@ -91,6 +91,10 @@
     <string name="delete_group">Delete group</string>
     <string name="delete_group_tips">Delete the \"%1$s\" group and all of the feeds and archived articles it contains</string>
     <string name="group_option_tips">The following options apply to all feeds in this group</string>
+    <!-- Feed/GroupDetail pages (UI-CONTRACT §2.2/§2.4) -->
+    <string name="back_to_feeds">Back to Feeds</string>
+    <string name="more_actions_for">More actions for %1$s</string>
+    <string name="open_original">Open original</string>
     <string name="today">Today</string>
     <string name="yesterday">Yesterday</string>
     <string name="date_at_time">%1$s at %2$s</string>

@@ -95,6 +95,8 @@ fun FeedsPage(
     navigationToFlow: () -> Unit,
     navigateToAccountList: () -> Unit,
     navigateToAccountDetail: (Int) -> Unit,
+    navigateToFeedDetail: (String) -> Unit,
+    navigateToGroupDetail: (String) -> Unit,
 ) {
     var accountTabVisible by remember { mutableStateOf(false) }
 
@@ -289,6 +291,7 @@ fun FeedsPage(
                                             .not()
                                 },
                                 onLongClick = { scope.launch { groupDrawerState.show() } },
+                                onMoreClick = { navigateToGroupDetail(group.id) },
                             ) {
                                 feedsViewModel.changeFilter(
                                     filterState.copy(group = group, feed = null)
@@ -310,6 +313,7 @@ fun FeedsPage(
                                         navigationToFlow()
                                     },
                                     onLongClick = { scope.launch { feedDrawerState.show() } },
+                                    onMoreClick = { navigateToFeedDetail(feed.id) },
                                 )
                             }
                         }

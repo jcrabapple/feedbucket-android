@@ -8,9 +8,11 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +40,7 @@ fun GroupItem(
     groupOptionViewModel: GroupOptionViewModel = hiltViewModel(),
     onExpanded: () -> Unit = {},
     onLongClick: () -> Unit = {},
+    onMoreClick: () -> Unit = {},
     groupOnClick: () -> Unit = {},
 ) {
     val view = LocalView.current
@@ -72,20 +75,37 @@ fun GroupItem(
                 overflow = TextOverflow.Ellipsis,
             )
             Row(
-                modifier = Modifier
-                    .padding(end = 20.dp)
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable { onExpanded() },
+                modifier = Modifier.padding(end = 8.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = if (isExpanded()) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                    contentDescription = stringResource(if (isExpanded()) R.string.expand_less else R.string.expand_more),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
+                // Row overflow → GroupDetail (UI-CONTRACT §2.3); long-press
+                // stays as the duplicate drawer shortcut.
+                IconButton(
+                    onClick = onMoreClick,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.MoreVert,
+                        contentDescription =
+                            stringResource(R.string.more_actions_for, group.name),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clickable { onExpanded() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = if (isExpanded()) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = stringResource(if (isExpanded()) R.string.expand_less else R.string.expand_more),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(22.dp))
