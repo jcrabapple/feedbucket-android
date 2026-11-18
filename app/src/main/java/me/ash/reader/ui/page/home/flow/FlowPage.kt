@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.paging.ItemSnapshotList
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.FlowPreview
@@ -359,8 +360,7 @@ fun FlowPage(
                     val index = listState.firstVisibleItemIndex
                     val offset = listState.firstVisibleItemScrollOffset
                     val anchorId =
-                        (pagingItems?.peek(index) as? ArticleFlowItem.Article)
-                            ?.articleWithFeed?.article?.id
+                        anchorArticleIdAt(pagingItems?.itemSnapshotList, index)
                     scope.launch {
                         viewModel.persistPosition(positionScope, anchorId, index, offset)
                     }
@@ -787,8 +787,7 @@ fun FlowPage(
                                 val index = listState.firstVisibleItemIndex
                                 val offset = listState.firstVisibleItemScrollOffset
                                 val anchorId =
-                                    (pagingItems.peek(index) as? ArticleFlowItem.Article)
-                                        ?.articleWithFeed?.article?.id
+                                    anchorArticleIdAt(pagingItems.itemSnapshotList, index)
                                 viewModel.persistPosition(positionScope, anchorId, index, offset)
                             }
                     }
@@ -1004,4 +1003,18 @@ fun FlowPage(
             )
         }
     }
+}
+
+/**
+ * S24a anchor lookup, bounds-checked.
+ *
+ * `listState.firstVisibleItemIndex` can be stale while the paging snapshot is empty or
+ * reloaded (e.g. switching Read -> Feeds fires ON_PAUSE before the new page arrives).
+ * `LazyPagingItems.peek(index)` threw IndexOutOfBoundsException there (crash report
+ * 2026-11-18, Android 17, SM-S948U1). Out-of-range or non-article positions yield a null
+ * anchor; persistPosition still records index/offset.
+ */
+internal fun anchorArticleIdAt(items: ItemSnapshotList<ArticleFlowItem>?, index: Int): String? {
+    if (items == null || index < 0 || index >= items.size) return null
+    return (items[index] as? ArticleFlowItem.Article)?.articleWithFeed?.article?.id
 }
