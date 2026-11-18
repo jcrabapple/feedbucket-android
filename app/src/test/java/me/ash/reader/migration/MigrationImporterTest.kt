@@ -121,6 +121,13 @@ class MigrationImporterTest {
                 feeds.remove(it.getArgument(0))
                 Unit
             }
+            // E7 — importer median hook: mirror the write into the fake store.
+            whenever(feedDao.updateMedianBodyLength(any(), any())).thenAnswer { invocation ->
+                val id = invocation.getArgument<String>(0)
+                val median = invocation.getArgument<Int>(1)
+                feeds[id]?.medianBodyLength = median
+                Unit
+            }
 
             whenever(groupDao.queryById(any())).thenAnswer { groups[it.getArgument(0)] }
             whenever(groupDao.insertAll(any())).thenAnswer { invocation ->
@@ -589,6 +596,34 @@ class MigrationImporterTest {
         assertEquals(runId, feedIdentity.createdByRunId)
 
         assertEquals(ImportRun.STATE_COMPLETED, runs.getValue(runId).state)
+    }
+
+    /**
+     * X3 task 5 / E7+E24 — the importer recomputes each feed's
+     * `medianBodyLength` at the end of its per-feed apply, sampled from the
+     * imported rows' stored `rawDescription` values. Expected values are the
+     * hand-computed UPPER medians (web `feed_median_body_len` parity) of the
+     * canonical fixture's plain-text body lengths:
+     *  - alpha: {17 "Original body one", 8 "Body two", 10 "Body three"} → sorted [8,10,17] → idx 3/2=1 → 10;
+     *  - beta:  {13 "Beta body one", 17 "Original beta two"} → sorted [13,17] → idx 2/2=1 → 17;
+     *  - gamma: {14 "Gamma body one", 14 "Gamma body two"} → sorted [14,14] → idx 1 → 14.
+     */
+    @Test
+    fun applyComputesPerFeedMedianFromImportedEntries() = runBlocking {
+        val fixture = File(tmp.root, "fixture.db")
+        buildWebFixtureDb(fixture)
+        val runId = stageFile(fixture)
+        val preview = previewReady(runId)
+
+        applyCompleted(runId, preview.fingerprint)
+
+        val alpha = feeds.getValue(expectedFeedId("https://alpha.example/feed.xml"))
+        val beta = feeds.getValue(expectedFeedId("https://beta.example/rss"))
+        val gamma = feeds.getValue(expectedFeedId("https://gamma.example/atom.xml"))
+        assertTrue("imported feed must get a NON-ZERO median from its entries", alpha.medianBodyLength > 0)
+        assertEquals(10, alpha.medianBodyLength)
+        assertEquals(17, beta.medianBodyLength)
+        assertEquals(14, gamma.medianBodyLength)
     }
 
     @Test

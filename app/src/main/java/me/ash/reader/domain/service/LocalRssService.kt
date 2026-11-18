@@ -15,6 +15,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import me.ash.reader.domain.data.SyncLogger
 import me.ash.reader.domain.model.account.AccountType
+import me.ash.reader.domain.model.extract.ExtractPolicy
+import me.ash.reader.domain.model.extract.MedianBodyLength
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.feed.FeedWithArticle
 import me.ash.reader.domain.model.query.QueryMatcher
@@ -138,6 +140,20 @@ constructor(
                                         },
                                     now = preDate,
                                 )
+                            // E7 — recompute this feed's median body-length
+                            // estimate immediately AFTER its storeEntries
+                            // transaction (same per-feed block; a crash
+                            // between the two is harmless — the value is an
+                            // estimate, recomputed every sync).
+                            feedDao.updateMedianBodyLength(
+                                currentFeed.id,
+                                MedianBodyLength.recompute(
+                                    articleDao.queryRecentRawDescriptionsForMedian(
+                                        currentFeed.id,
+                                        ExtractPolicy.MEDIAN_SAMPLE_CAP,
+                                    ),
+                                ),
+                            )
                             if (currentFeed.isNotification && newArticles.isNotEmpty()) {
                                 notificationHelper.notify(
                                     fetchedFeed.copy(articles = newArticles, feed = currentFeed)

@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleIdentity
 import me.ash.reader.domain.model.download.DownloadHtmlSanitizer
+import me.ash.reader.domain.model.extract.MedianBodyLength
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
 import me.ash.reader.domain.model.importing.ImportIdentity
@@ -565,6 +566,14 @@ class FeedBucketImporter internal constructor(
             if (articles.isNotEmpty()) {
                 articleDao.insertList(articles)
                 importDao.insertIdentities(identities)
+                // E7/E24 — per-feed median recompute at the end of the
+                // per-feed apply, sampled from the imported rows (single
+                // implementation; samples are the stored rawDescription
+                // values of the articles just inserted).
+                feedDao.updateMedianBodyLength(
+                    feedId,
+                    MedianBodyLength.recompute(articles.map { it.rawDescription }),
+                )
             }
             importDao.insertIdentities(
                 listOf(
