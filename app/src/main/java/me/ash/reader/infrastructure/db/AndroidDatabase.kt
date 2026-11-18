@@ -44,7 +44,7 @@ import java.util.*
         StateApplyRun::class, StateApplyBefore::class,
         ArticleFts::class,
     ],
-    version = 8,
+    version = 9,
     // NOTE: the upstream AutoMigrations (5->6, 5->7, 6->7) were converted to
     // explicit Migration objects below: with v8 entity changes, Room's KSP
     // re-derives auto-migrations against the changed entities and clobbers
@@ -115,6 +115,7 @@ val allMigrations = arrayOf(
     MIGRATION_5_6,
     MIGRATION_6_7,
     MIGRATION_7_8,
+    MIGRATION_8_9,
 )
 
 @Suppress("ClassName")
@@ -336,6 +337,26 @@ object MIGRATION_7_8 : Migration(7, 8) {
             """
             UPDATE feed SET tags = lower((SELECT name FROM `group` AS g WHERE g.id = feed.groupId))
             WHERE tags = '' AND EXISTS (SELECT 1 FROM `group` AS g WHERE g.id = feed.groupId)
+            """.trimIndent()
+        )
+    }
+}
+
+/**
+ * E7 (SPEC-EXTRACT-v1, amendment E26.3) — the ONE post-v1 feature migration:
+ * `feed.medianBodyLength` for the E6 adaptive teaser trigger. Single ALTER,
+ * NOT NULL DEFAULT 0 so the ADD COLUMN is safe on populated tables. No SQL
+ * backfill: 0 means "unknown until the next recompute" and is safe by E6 —
+ * the trigger threshold degrades exactly like web's `feed_median_body_len →
+ * 0` (floor `max(200, 0)` = 200 chars).
+ */
+@Suppress("ClassName")
+object MIGRATION_8_9 : Migration(8, 9) {
+
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            ALTER TABLE feed ADD COLUMN medianBodyLength INTEGER NOT NULL DEFAULT 0
             """.trimIndent()
         )
     }

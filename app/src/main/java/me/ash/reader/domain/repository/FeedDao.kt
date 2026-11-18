@@ -84,6 +84,20 @@ interface FeedDao {
         isNotification: Boolean,
     )
 
+    /**
+     * E7 (SPEC-EXTRACT-v1) — persist the recomputed per-feed median body
+     * length estimate (chars). Sole writer of `feed.medianBodyLength`;
+     * called after each feed's sync/import recompute (E7). The value is an
+     * estimate input only — never displayed, never used for ranking.
+     */
+    @Query(
+        """
+        UPDATE feed SET medianBodyLength = :medianBodyLength
+        WHERE id = :feedId
+        """
+    )
+    suspend fun updateMedianBodyLength(feedId: String, medianBodyLength: Int)
+
     @Query(
         """
         SELECT * FROM feed
@@ -193,6 +207,11 @@ interface FeedDao {
                         isNotification = existing.isNotification,
                         isFullContent = existing.isFullContent,
                         isBrowser = existing.isBrowser,
+                        // E7: the median estimate is locally computed and must
+                        // survive feed-metadata refreshes (parsed feeds never
+                        // carry it; clobbering to 0 would reset the E6 trigger
+                        // baseline between recomputes).
+                        medianBodyLength = existing.medianBodyLength,
                     )
                 if (updated == existing) {
                     null

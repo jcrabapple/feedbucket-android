@@ -56,6 +56,15 @@ data class Feed(
     var lastFetchedAt: Date? = null,
     @ColumnInfo
     var etag: String? = null,
+    /**
+     * E7 (SPEC-EXTRACT-v1) — estimated median plain-text body length (chars)
+     * of this feed's recent articles; input to the E6 adaptive teaser
+     * trigger only. 0 = "unknown until the next recompute" and degrades
+     * safely to the 200-char trigger floor. `var` + defaultValue per the
+     * Room-KSP setter note above.
+     */
+    @ColumnInfo(defaultValue = "0")
+    var medianBodyLength: Int = 0,
     @Ignore val important: Int = 0
 ) {
     constructor(

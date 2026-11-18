@@ -560,11 +560,61 @@ interface ArticleDao {
         WHERE f.accountId = :accountId
         AND f.isFullContent = 1
         AND a.isUnread = 1
+        AND a.fullContent IS NULL
         """
     )
     suspend fun queryUnreadFullContentArticles(
         accountId: Int,
     ): List<Article>
+
+    /**
+     * E4 (SPEC-EXTRACT-v1) — the ONE extraction write path: a single UPDATE
+     * setting EXACTLY `fullContent` + its S12a shadow `fullLower` (computed
+     * by the CALLER via `TextNormalizer.normalize(fullContent)`, S11a
+     * write-path invariant) + `extractedAt`. Never touches
+     * rawDescription/shortDescription/originalContent/contentChangedAt/
+     * isUpdated/isUnread/isStarred/readAt/img/publishedAt/date (S19) and
+     * does NOT bump `stateVersion` (the S18a choke point covers read/star/
+     * update state writers only; extraction is a content write). Room's
+     * `room_fts_content_sync_*` triggers carry the change into `article_fts`
+     * (S16 — extracted text becomes searchable). Returns rows updated.
+     */
+    @Query(
+        """
+        UPDATE article SET
+            fullContent = :fullContent, fullLower = :fullLower, extractedAt = :extractedAt
+        WHERE id = :id
+        """
+    )
+    suspend fun applyExtraction(
+        id: String,
+        fullContent: String,
+        fullLower: String,
+        extractedAt: Date,
+    ): Int
+
+    /**
+     * E7 (SPEC-EXTRACT-v1) — median recompute samples: the feed's most
+     * recent articles' `rawDescription`, non-empty rows only, `ORDER BY
+     * rowid DESC LIMIT :limit` (E7's recompute cap is 100 via the feedId
+     * index; the cap bounds cost inside a mobile sync transaction). The
+     * caller (`MedianBodyLength.recompute`, X3) computes
+     * `plainTextLength` per row, drops zeros and takes the upper median.
+     */
+    @Query(
+        """
+        SELECT rawDescription FROM article
+        WHERE feedId = :feedId
+        AND rawDescription IS NOT NULL
+        AND rawDescription != ''
+        ORDER BY rowid DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun queryRecentRawDescriptionsForMedian(
+        feedId: String,
+        limit: Int,
+    ): List<String>
 
     @Transaction
     @Query(
