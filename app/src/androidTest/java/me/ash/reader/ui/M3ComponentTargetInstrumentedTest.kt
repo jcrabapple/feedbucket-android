@@ -112,7 +112,8 @@ class M3ComponentTargetInstrumentedTest {
                         modifier = Modifier.testTag("diff_row").heightIn(min = 48.dp)
                     ) {
                         SegmentedButton(
-                            modifier = Modifier.testTag("diff_option_current"),
+                            modifier =
+                                Modifier.testTag("diff_option_current").heightIn(min = 48.dp),
                             selected = true,
                             onClick = {},
                             shape = MaterialTheme.shapes.small,
@@ -120,7 +121,8 @@ class M3ComponentTargetInstrumentedTest {
                             Text("Current")
                         }
                         SegmentedButton(
-                            modifier = Modifier.testTag("diff_option_changes"),
+                            modifier =
+                                Modifier.testTag("diff_option_changes").heightIn(min = 48.dp),
                             selected = false,
                             onClick = {},
                             shape = MaterialTheme.shapes.small,

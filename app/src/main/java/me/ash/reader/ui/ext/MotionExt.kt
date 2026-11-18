@@ -10,7 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MotionScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 
 /**
@@ -46,13 +45,14 @@ object MotionExt {
         }
 
     /**
-     * Reduced-motion state for the current composition. The value is read
-     * once per composition; it is not polled.
+     * Reduced-motion state for the current composition. Read on each
+     * recomposition (a cheap Settings lookup) so a mid-session change of the
+     * animator duration scale is picked up instead of cached stale.
      */
     @Composable
     fun rememberReducedMotion(): Boolean {
         val context = LocalContext.current
-        return remember { isReducedMotion(animatorDurationScale(context)) }
+        return isReducedMotion(animatorDurationScale(context))
     }
 
     /** The product-wide motion scheme: Material standard (D17/§7). */
