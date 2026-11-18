@@ -248,7 +248,7 @@ constructor(
                     articleListUseCase.itemSnapshotList.items
                         .filterIsInstance<ArticleFlowItem.Article>()
                         .map { it.articleWithFeed }
-                        .filter { it.article.isUnread && it.article.date.before(before) }
+                        .filter { isUnreadBeforeCutoff(it.article, before) }
                 if (items.isNotEmpty()) {
                     diffMapHolder.updateDiff(articleWithFeed = items.toTypedArray(), isUnread = false)
                 }
@@ -755,3 +755,13 @@ data class ReaderState(
 
     data object Loading : ContentState
 }
+
+/**
+ * Mark-all-read overlay predicate for loaded articles.
+ *
+ * A null [cutoff] means "all" (`MarkAsReadConditions.All.toDate()` is null), so every unread
+ * loaded article matches. Calling `Date.before(null)` there threw an NPE on mark-all-read
+ * (crash report 2026-11-18, Android 17, SM-S948U1).
+ */
+internal fun isUnreadBeforeCutoff(article: Article, cutoff: Date?): Boolean =
+    article.isUnread && (cutoff == null || article.date.before(cutoff))
