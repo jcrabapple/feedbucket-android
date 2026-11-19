@@ -3,7 +3,6 @@ package me.ash.reader.domain.model.diff
 import com.github.difflib.DiffUtils
 import com.github.difflib.patch.DeltaType
 import com.github.difflib.patch.Patch
-import java.util.regex.Pattern
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Comment
 import org.jsoup.nodes.Entities
@@ -39,19 +38,26 @@ import org.jsoup.safety.Whitelist
 object ContentDiffer {
 
     /**
-     * Web `_TOKEN` parity (feedbucket/diff.py:8). Compiled through
-     * `java.util.regex.Pattern` because Kotlin's [RegexOption] has no
-     * UNICODE_CHARACTER_CLASS: the flag keeps `\s` semantics identical to
-     * Python 3 str patterns. Two explicit additions pin Python `str.isspace`
-     * characters Java's Unicode whitespace class omits: `\u00A0` (NBSP)
-     * and `\u001C-\u001F` (information separators) — all pinned by
-     * recorded fixtures (`nbsp_raw`/`em_space`, `tokenRegexParityPythonWhitespaceSeparators`).
+     * Web `_TOKEN` parity (feedbucket/diff.py:8). Portable explicit Unicode
+     * classes — NOT the JVM-only `Pattern.UNICODE_CHARACTER_CLASS` flag:
+     * Android's ICU-backed `java.util.regex` REJECTS that flag with
+     * `IllegalArgumentException: UNICODE_CHARACTER_CLASS flag not supported`
+     * at `Pattern.compile`, which in a static initializer throws
+     * `ExceptionInInitializerError` and takes down every [ContentDiffer]
+     * caller on-device (the same landmine class that crashed 0.1.3's
+     * `ExtractCleaner`; witnessed by `ContentDifferInstrumentedTest` on api36
+     * and the 0.1.3 S26/API-37 crash). Kotlin's [Regex] compiles with no flags,
+     * so `[\s\p{Z}]` reproduces Python 3's Unicode `\s` on BOTH engines:
+     * `\s` = ASCII whitespace, `\p{Z}` = the Unicode separator category
+     * (NBSP, EM SPACE, ideographic space, line/paragraph separators). Three
+     * explicit additions pin the characters Python `str.isspace` treats as
+     * whitespace that Java's class omits even with the flag: `\u0085` (NEL),
+     * `\u00A0` (NBSP) and `\u001C-\u001F` (information separators). Identical
+     * fixtures pin the JVM (`DiffTokenizerTest`) and ICU
+     * (`ContentDifferInstrumentedTest`) token streams.
      */
     val TOKEN_REGEX: Regex =
-        Pattern.compile(
-            "<[^>]+>|[^\\s\\u00A0\\u001C-\\u001F]+|[\\s\\u00A0\\u001C-\\u001F]+",
-            Pattern.UNICODE_CHARACTER_CLASS,
-        ).toRegex()
+        Regex("<[^>]+>|[^\\s\\p{Z}\\u0085\\u00A0\\u001C-\\u001F]+|[\\s\\p{Z}\\u0085\\u00A0\\u001C-\\u001F]+")
 
     enum class SegmentKind { EQUAL, DELETE, INSERT }
 

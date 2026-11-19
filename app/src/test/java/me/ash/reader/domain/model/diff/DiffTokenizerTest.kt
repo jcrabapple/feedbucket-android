@@ -162,6 +162,26 @@ class DiffTokenizerTest {
         }
     }
 
+    /**
+     * Portable-class parity companion to
+     * `ContentDifferInstrumentedTest.tokenizeNonAsciiWordRunsOnIcu`: the
+     * explicit `[\s\p{Z}\u0085\u00A0\u001C-\u001F]` whitespace class must
+     * split identically on the JVM and on Android ICU. Non-ASCII letters
+     * (accented Latin, CJK, Cyrillic) are non-whitespace, so each contiguous
+     * run is ONE token; NEL (U+0085) and NBSP (U+00A0) are separators
+     * (Python `str.isspace` / Unicode `White_Space` parity).
+     */
+    @Test
+    fun tokenRegexNonAsciiWordRunsAndSeparators() {
+        assertEquals(listOf("café", " ", "müller"), ContentDiffer.tokenize("café müller"))
+        assertEquals(listOf("東京", " ", "物語"), ContentDiffer.tokenize("東京 物語"))
+        assertEquals(listOf("Привет", " ", "мир"), ContentDiffer.tokenize("Привет мир"))
+        assertEquals(listOf("café", "\u00A0", "東京"), ContentDiffer.tokenize("café\u00A0東京"))
+        // NEL (U+0085): Unicode/Python whitespace, but NOT in Java's `\s` even
+        // with UNICODE_CHARACTER_CLASS — the explicit `\u0085` pins it.
+        assertEquals(listOf("a", "\u0085", "b"), ContentDiffer.tokenize("a\u0085b"))
+    }
+
     @Test
     fun sanitizeParityAgainstNh3() {
         for ((input, fixture) in sanitizedFixtures) {

@@ -20,7 +20,6 @@
 
 package me.ash.reader.infrastructure.di
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.security.KeyChain
 import dagger.Module
@@ -48,7 +47,6 @@ import javax.inject.Qualifier
 import javax.inject.Singleton
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509KeyManager
-import javax.net.ssl.X509TrustManager
 
 /** S28 — dedicated client for article downloads (connect 15s/read 30s/call 120s). */
 @Qualifier
@@ -61,9 +59,9 @@ annotation class DownloadHttpClient
  * coordinator walks them manually under the per-hop E17 SSRF guard),
  * NO HTTP cache (an extraction is a fresh publisher fetch every time).
  * The EXISTING [UserAgentInterceptor] is attached unchanged — the app's
- * regular UA, never a crawler/spoofed UA (E1 hard wall). The pre-existing
- * `trustAllCerts = true` posture of [cachingHttpClient] is inherited
- * unchanged and explicitly OUT of scope for this upgrade (E18 note).
+ * regular UA, never a crawler/spoofed UA (E1 hard wall). TLS uses the
+ * platform trust store (full certificate + hostname verification) like
+ * every other client — see [cachingHttpClient].
  */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
@@ -139,11 +137,19 @@ object OkHttpClientModule {
             .build()
 }
 
+/**
+ * Builds the shared [OkHttpClient]. Standard HTTPS uses OkHttp's default
+ * platform trust store, so certificate AND hostname verification are ON for
+ * every caller. There is no insecure / permissive-trust mode: a grep of the
+ * codebase found no self-signed-server toggle or dialog, so none is offered.
+ * [setupSsl] is invoked ONLY to attach a client certificate for mutual TLS
+ * when [clientCertificateAlias] is set; even then the SERVER chain is still
+ * verified against the platform trust store.
+ */
 fun cachingHttpClient(
     context: Context,
     cacheDirectory: File? = null,
     cacheSize: Long = 10L * 1024L * 1024L,
-    trustAllCerts: Boolean = true,
     connectTimeoutSecs: Long = 30L,
     readTimeoutSecs: Long = 30L,
     clientCertificateAlias: String? = null,
@@ -159,17 +165,23 @@ fun cachingHttpClient(
         .readTimeout(readTimeoutSecs, TimeUnit.SECONDS)
         .followRedirects(true)
 
-    if (!clientCertificateAlias.isNullOrBlank() || trustAllCerts) {
-        builder.setupSsl(context, clientCertificateAlias, trustAllCerts)
+    if (!clientCertificateAlias.isNullOrBlank()) {
+        builder.setupSsl(context, clientCertificateAlias)
     }
 
     return builder.build()
 }
 
+/**
+ * Attaches a client certificate (mutual TLS) from the Android [KeyChain] when
+ * [clientCertificateAlias] is set. The SERVER certificate chain is ALWAYS
+ * verified against [Platform.get().platformTrustManager]; there is no
+ * insecure / permissive-trust branch and no custom hostname verifier, so the
+ * default (strict) hostname verification stays in force.
+ */
 fun OkHttpClient.Builder.setupSsl(
     context: Context,
     clientCertificateAlias: String?,
-    trustAllCerts: Boolean
 ) {
     try {
         val clientKeyManager = clientCertificateAlias?.let { clientAlias ->
@@ -202,26 +214,11 @@ fun OkHttpClient.Builder.setupSsl(
             }
         }
 
-        val trustManager = if (trustAllCerts) {
-            hostnameVerifier { _, _ -> true }
-
-            @SuppressLint("CustomX509TrustManager")
-            object : X509TrustManager {
-                override fun checkClientTrusted(
-                    chain: Array<out X509Certificate>?,
-                    authType: String?
-                ) = Unit
-
-                override fun checkServerTrusted(
-                    chain: Array<out X509Certificate>?,
-                    authType: String?
-                ) = Unit
-
-                override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-            }
-        } else {
-            Platform.get().platformTrustManager()
-        }
+        // Platform trust store: the SERVER certificate chain is always
+        // verified. There is no insecure / permissive-trust branch (the app
+        // exposes no self-signed opt-in), so standard HTTPS keeps full
+        // certificate and hostname verification.
+        val trustManager = Platform.get().platformTrustManager()
 
         val sslContext = SSLContext.getInstance("TLS")
         sslContext.init(arrayOf(clientKeyManager), arrayOf(trustManager), null)
