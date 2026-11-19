@@ -44,7 +44,7 @@ import java.util.*
         StateApplyRun::class, StateApplyBefore::class,
         ArticleFts::class,
     ],
-    version = 9,
+    version = 10,
     // NOTE: the upstream AutoMigrations (5->6, 5->7, 6->7) were converted to
     // explicit Migration objects below: with v8 entity changes, Room's KSP
     // re-derives auto-migrations against the changed entities and clobbers
@@ -116,6 +116,7 @@ val allMigrations = arrayOf(
     MIGRATION_6_7,
     MIGRATION_7_8,
     MIGRATION_8_9,
+    MIGRATION_9_10,
 )
 
 @Suppress("ClassName")
@@ -358,6 +359,29 @@ object MIGRATION_8_9 : Migration(8, 9) {
             """
             ALTER TABLE feed ADD COLUMN medianBodyLength INTEGER NOT NULL DEFAULT 0
             """.trimIndent()
+        )
+    }
+}
+
+/**
+ * Review fix lane 6 — index the `archived_article.feedId` foreign key, the
+ * last unindexed FK child column in the schema (Room KSP warned: "feedId
+ * column references a foreign key but it is not part of an index. This may
+ * trigger full table scans whenever parent table is modified"). The index
+ * name is Room's generated `index_archived_article_feedId` — verified
+ * against the committed 10.json export. Index-only migration: no table
+ * rewrite, all rows preserved.
+ *
+ * NOTE: `article.feedId` was already indexed (`index_article_feedId`,
+ * `@ColumnInfo(index = true)` since v8) — the review card named the wrong
+ * table; the KSP warning came from `archived_article`.
+ */
+@Suppress("ClassName")
+object MIGRATION_9_10 : Migration(9, 10) {
+
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_archived_article_feedId` ON `archived_article` (`feedId`)"
         )
     }
 }

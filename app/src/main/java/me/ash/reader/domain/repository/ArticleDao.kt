@@ -1210,9 +1210,16 @@ interface ArticleDao {
     ): PagingSource<Int, ArticleWithFeed>
 
     @Transaction
+    @RewriteQueriesToDropUnusedColumns
     @Query(
         """
-        SELECT * FROM article AS a
+        SELECT a.id, a.date, a.title, a.author, a.rawDescription,
+        a.shortDescription, a.fullContent, a.img, a.link, a.feedId,
+        a.accountId, a.isUnread, a.isStarred, a.isReadLater, a.updateAt,
+        a.guid, a.originalContent, a.contentChangedAt, a.isUpdated, a.readAt,
+        a.extractedAt, a.publishedAt, a.stateVersion, a.titleLower, a.shortLower,
+        a.rawLower, a.fullLower
+        FROM article AS a
         LEFT JOIN feed AS b ON b.id = a.feedId
         LEFT JOIN `group` AS c ON c.id = b.groupId
         WHERE c.id = :groupId
