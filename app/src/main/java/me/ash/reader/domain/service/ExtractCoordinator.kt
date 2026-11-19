@@ -80,7 +80,10 @@ enum class ExtractFailureReason {
     /** E15 — the deterministic post-cleaner threw. */
     CLEANER_ERROR,
 
-    /** E16.1 — productive-text ratio below 5% of the raw document. */
+    /**
+     * E16.1 (amendment A1) — productive-text ratio below 5% of the SANITIZED
+     * FRAGMENT (was: of the raw document — false-rejected heavy pages).
+     */
     UNPRODUCTIVE,
 
     /** E16.2 — result not strictly longer than the mode's floor. */
@@ -304,10 +307,18 @@ class ExtractCoordinator(
         // E19 — sanitize BEFORE measurement and BEFORE the write.
         val sanitized = DownloadHtmlSanitizer.sanitize(cleaned)
 
-        // E16.1 — productive-ratio guard: fewer than 5% productive chars
-        // (plainTextLength × 20 < rawHtml.length) means markup/junk won.
+        // E16.1 + amendment A1 (docs/research/SPEC-EXTRACT-AMENDMENT-A1.md) —
+        // productive-ratio guard: fewer than 5% productive chars means
+        // markup/junk won. A1 moves the basis from the RAW fetched document
+        // to the SANITIZED FRAGMENT (the same string plainTextLength
+        // measures): site chrome outside the extracted fragment no longer
+        // counts against a complete article. The raw-document basis
+        // false-rejected heavy pages (device-verified on 0.1.4: a 2,503-char
+        // Engadget extract on a 61,559-byte page, 2,503 × 20 = 50,060 <
+        // 61,559); a markup-dominant FRAGMENT (nav/menu/junk grab) still
+        // fails here.
         val productiveTextLength = UpdateDetection.plainTextLength(sanitized).toLong()
-        if (productiveTextLength * PRODUCTIVE_RATIO_DENOMINATOR < body.html.length.toLong()) {
+        if (productiveTextLength * PRODUCTIVE_RATIO_DENOMINATOR < sanitized.length.toLong()) {
             return ExtractOutcome.Failure(ExtractFailureReason.UNPRODUCTIVE)
         }
 
@@ -362,7 +373,10 @@ class ExtractCoordinator(
     companion object {
         private const val TAG = "RLog"
 
-        /** E16.1 — `plainTextLength × 20 < rawHtml.length` ⇒ under 5% productive. */
+        /**
+         * E16.1 + amendment A1 — `plainTextLength × 20 < sanitizedFragment.length`
+         * ⇒ under 5% productive (basis per SPEC-EXTRACT-AMENDMENT-A1.md).
+         */
         private const val PRODUCTIVE_RATIO_DENOMINATOR = 20L
 
         /** E3 — name of the retired legacy disk-cache dir under `cacheDir`. */

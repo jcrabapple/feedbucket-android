@@ -15,6 +15,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import me.ash.reader.domain.model.article.Article
+import me.ash.reader.domain.model.article.UpdateDetection
 import me.ash.reader.domain.model.extract.ExtractPolicy
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.query.TextNormalizer
@@ -435,13 +436,22 @@ class ExtractCoordinatorTest {
 
     @Test
     fun unproductiveRatioIsTypedNoOp() = runBlocking {
-        // E16.1 — <5% productive text: ~155 chars of real text inside ~8 KiB
-        // of markup. Ratio guard fires BEFORE the length guard (card order).
-        val junk = buildString {
-            repeat(120) { append("<div class=\"page-chrome-padding-filler-section-wrapper-$it\"></div>") }
-        }
-        val page = "<!DOCTYPE html><html><head><title>t</title></head><body><article>" +
-            "<p>$TEST_PARAGRAPH</p>$junk</article></body></html>"
+        // E16.1 + amendment A1 — <5% productive text: ~280 chars of text
+        // inside ~11 KiB of SURVIVING fragment markup (long-href anchors;
+        // the grabber drops contentless filler and readability4j strips
+        // class attributes, so only pipeline-preserved markup weights the
+        // fragment). Ratio guard fires BEFORE the length guard (card
+        // order). A1: the junk sits inside the sanitized fragment, so the
+        // reject holds under the fragment basis — pinned arithmetically
+        // below, not incidentally via the raw document size.
+        val page = markupHeavyJunkPage()
+        val sanitized = pipelineSanitizedFragment(page, "Test Article")
+        val textLength = UpdateDetection.plainTextLength(sanitized)
+        assertTrue(
+            "A1 basis: 20×$textLength must stay below fragment ${sanitized.length}",
+            textLength * 20L < sanitized.length.toLong(),
+        )
+
         val recorder = DaoRecorder()
         val transport = FakeTransport()
         transport.respond(EXTRACT_TEST_LINK, page)
