@@ -5,7 +5,13 @@ import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.security.MessageDigest
@@ -16,6 +22,7 @@ import me.ash.reader.ui.component.webview.OfflineArticleClient
 import me.ash.reader.ui.component.webview.OfflineArticleOrigin
 import me.ash.reader.ui.component.webview.OfflineArticleTarget
 import me.ash.reader.ui.component.webview.OfflineArticleWebView
+import me.ash.reader.ui.component.webview.loadOfflinePageOnce
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -63,8 +70,15 @@ class OfflineRenderTest {
         assetDir.mkdirs()
         val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47) + ByteArray(32)
         java.io.File(assetDir, "pic.png").writeBytes(pngBytes)
+        // The declared icon suppresses Chromium's automatic /favicon.ico
+        // probe: that URL sits OUTSIDE the /app/ path scope (it would trip
+        // the zero-non-local assertion), and whether it reaches the
+        // interceptor before the assertion is an order-dependent race once
+        // any earlier test in the class has warmed the favicon service.
         val html =
-            """<html><head><title>Fixture</title></head><body>
+            """<html><head><title>Fixture</title>
+               |<link rel="icon" href="assets/pic.png">
+               |</head><body>
                |<p>Offline fixture body</p>
                |<img src="assets/pic.png">
                |</body></html>""".trimMargin()
@@ -120,6 +134,110 @@ class OfflineRenderTest {
         assertTrue(
             "every served URL must be appassets-origin, saw: $recorded",
             recorded.all { OfflineArticleOrigin.isAppAssetsUrl(it) },
+        )
+    }
+
+    /**
+     * Lane 4 defect 1 — end-to-end contract: recompositions of
+     * [OfflineArticleWebView] with the SAME target must never re-issue
+     * loadUrl (the old unconditional `update` block reset scroll and
+     * flickered). A changing modifier forces the composable to recompose.
+     * Note: compose-ui 1.10 memoizes the AndroidView `update` block by its
+     * captures, so on THIS version the guard is additionally pinned
+     * deterministically by [loadOfflinePageOnceSkipsRepeatLoadForSameUrl];
+     * this test protects the user-visible contract under any recomposition
+     * semantics.
+     */
+    @Test
+    fun recompositionDoesNotReloadSameOfflineTarget() {
+        val recorded = CopyOnWriteArrayList<String>()
+        val indexUrl = target.pageUrl()
+        var padTick by mutableStateOf(0)
+        composeRule.setContent {
+            OfflineArticleWebView(
+                target = target,
+                modifier = Modifier.padding(padTick.dp),
+                requestListener = { recorded.add(it) },
+            )
+        }
+        // Wait until the initial page load hit the interceptor.
+        composeRule.waitUntil(timeoutMillis = 15_000) { recorded.any { it == indexUrl } }
+        composeRule.waitForIdle()
+        val initialIndexLoads = recorded.count { it == indexUrl }
+
+        // Force three recompositions of the AndroidView update block.
+        repeat(3) { i ->
+            padTick = i + 1
+            composeRule.waitForIdle()
+        }
+        // Give any (incorrect) reload time to reach the interceptor.
+        Thread.sleep(2_000)
+        composeRule.waitForIdle()
+
+        assertEquals(
+            "recomposition must not reload the same offline article, saw: $recorded",
+            initialIndexLoads,
+            recorded.count { it == indexUrl },
+        )
+    }
+
+    /**
+     * Lane 4 defect 1 — direct seam test for the reload guard: repeated
+     * `loadOfflinePageOnce` calls with the SAME URL must issue `loadUrl`
+     * only once (tag-based guard). Independent of when a given Compose
+     * version re-runs `AndroidView.update` — compose-ui 1.10 memoizes the
+     * block by its captures, older versions re-ran it on every
+     * recomposition; the guard must hold under both.
+     */
+    @Test
+    fun loadOfflinePageOnceSkipsRepeatLoadForSameUrl() {
+        val recorded = CopyOnWriteArrayList<String>()
+        val url = target.pageUrl()
+        val themed =
+            android.view.ContextThemeWrapper(
+                context,
+                android.R.style.Theme_Material_Light_NoActionBar,
+            )
+        var webViewRef: WebView? = null
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .runOnMainSync {
+                webViewRef =
+                    WebView(themed).apply {
+                        OfflineArticleClient.harden(settings)
+                        webViewClient =
+                            OfflineArticleClient(
+                                assetLoader =
+                                    OfflineArticleClient.assetLoaderFor(
+                                        context,
+                                        target.articleDir(context),
+                                    ),
+                                onOpenLink = {},
+                                onRequest = { recorded.add(it) },
+                            )
+                        loadOfflinePageOnce(url)
+                    }
+            }
+
+        // Wait until the initial load hit the interceptor.
+        val deadline = System.currentTimeMillis() + 15_000
+        while (System.currentTimeMillis() < deadline && recorded.none { it == url }) {
+            Thread.sleep(100)
+        }
+        assertTrue("initial load must hit the interceptor", recorded.any { it == url })
+        val afterFirst = recorded.count { it == url }
+
+        // Repeat the update-path call twice with the same URL.
+        repeat(2) {
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                .runOnMainSync { webViewRef!!.loadOfflinePageOnce(url) }
+        }
+        // Give any (incorrect) reload time to reach the interceptor.
+        Thread.sleep(2_000)
+
+        assertEquals(
+            "the same offline URL must be loaded exactly once, saw: $recorded",
+            afterFirst,
+            recorded.count { it == url },
         )
     }
 

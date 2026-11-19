@@ -27,6 +27,26 @@ data class OfflineArticleTarget(
 }
 
 /**
+ * Lane 4 defect 1 — point a WebView at the offline page EXACTLY once per
+ * URL. The tag records the URL this instance was already directed to (set
+ * synchronously, unlike [WebView.getUrl], which only reflects a committed
+ * navigation), so repeat invocations with the same URL never re-issue
+ * `loadUrl` — which used to reset the scroll position and flicker the
+ * article on every AndroidView `update` pass.
+ *
+ * Extracted as a seam so the guard is instrumented-testable without
+ * depending on when a given Compose version re-runs `AndroidView.update`
+ * (compose-ui 1.10 memoizes the block by its captures; older versions
+ * re-ran it on every recomposition — the guard is correct under both).
+ */
+internal fun WebView.loadOfflinePageOnce(url: String) {
+    if (tag != url) {
+        tag = url
+        loadUrl(url)
+    }
+}
+
+/**
  * S30a — offline render entry for downloaded articles. Serves
  * `filesDir/downloads/<accountId>/<sha256(articleId)>/` exclusively through
  * the WebViewAssetLoader appassets origin with hardened settings; issues
@@ -64,6 +84,6 @@ fun OfflineArticleWebView(
     AndroidView(
         modifier = modifier,
         factory = { webView },
-        update = { it.loadUrl(target.pageUrl()) },
+        update = { it.loadOfflinePageOnce(target.pageUrl()) },
     )
 }

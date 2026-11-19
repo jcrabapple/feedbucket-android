@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +63,7 @@ import me.ash.reader.ui.page.adaptive.ArticleListReaderViewModel
 import me.ash.reader.ui.page.adaptive.NavigationAction
 import me.ash.reader.ui.page.adaptive.ReaderState
 import me.ash.reader.ui.page.home.reading.tts.TtsButton
+import timber.log.Timber
 
 private const val UPWARD = 1
 private const val DOWNWARD = -1
@@ -95,6 +97,7 @@ fun ReadingPage(
     var isReaderScrollingDown by remember { mutableStateOf(false) }
     var showFullScreenImageViewer by remember { mutableStateOf(false) }
     val imageSavedToast = stringResource(R.string.image_saved)
+    val imageSaveFailedToast = stringResource(R.string.image_save_failed)
 
     var currentImageData by remember { mutableStateOf(ImageData()) }
 
@@ -126,7 +129,15 @@ fun ReadingPage(
     // hardened offline renderer. Startup reconciliation demotes rows whose
     // committed dir fails manifest validation, so `ready` is authoritative.
     val offlineTarget =
-        remember(readerState.articleId, currentDownload?.state) {
+        remember(
+            readerState.articleId,
+            currentDownload?.state,
+            // Lane 4 defect 3 — this block reads the article row, so its id
+            // must be a remember key; without it a lagging `readingUiState`
+            // could bind the PREVIOUS article's OfflineArticleTarget (and
+            // route the offline renderer at the wrong directory).
+            readingUiState.articleWithFeed?.article?.id,
+        ) {
             val article = readingUiState.articleWithFeed?.article
             if (article != null && currentDownload?.state == me.ash.reader.domain.model.download.ArticleDownload.STATE_READY) {
                 me.ash.reader.ui.component.webview.OfflineArticleTarget(article.accountId, article.id)
@@ -175,18 +186,31 @@ fun ReadingPage(
                     val spatialSpecExit =
                         MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
                     // Content
+                    // Lane 4 defect 2 — the animation keys on the body
+                    // identity only (ReaderBodyState): transient flags
+                    // (isExtracting / extractFailed), prefetch neighbours
+                    // and listIndex no longer trigger a slide/fade of the
+                    // whole article nor recreate rememberScrollState().
+                    // Direction detection still needs the PREVIOUS full
+                    // state's neighbours: a plain (non-snapshot) ref,
+                    // updated in a SideEffect, holds the last APPLIED
+                    // ReaderState while transitionSpec evaluates the new
+                    // target during composition.
+                    val lastAppliedState = remember { arrayOf(readerState) }
+                    SideEffect { lastAppliedState[0] = readerState }
                     AnimatedContent(
-                        targetState = readerState,
+                        targetState = readerState.toBodyState(),
                         transitionSpec = {
                             if (reducedMotion) {
                                 MotionExt.fadeEnter() togetherWith
                                     MotionExt.fadeExit()
                             } else {
+                                val previous = lastAppliedState[0]
                                 val direction =
                                     when {
-                                        initialState.nextArticle?.articleId == targetState.articleId ->
+                                        previous.nextArticle?.articleId == targetState.articleId ->
                                             UPWARD
-                                        initialState.previousArticle?.articleId ==
+                                        previous.previousArticle?.articleId ==
                                             targetState.articleId -> DOWNWARD
                                         initialState.articleId == targetState.articleId -> {
                                             when (targetState.content) {
@@ -260,10 +284,13 @@ fun ReadingPage(
                                 // S26 — restore the durable reading position once
                                 // per article content; missing/corrupt rows fall
                                 // back to top-of-article, never a crash.
-                                LaunchedEffect(readerState.articleId, content) {
-                                    val articleId = readerState.articleId ?: return@LaunchedEffect
+                                // Lane 4 defect 2 — keyed on the FROZEN body
+                                // snapshot's id, so an exiting instance never
+                                // re-runs the restore for the incoming article.
+                                LaunchedEffect(articleId, content) {
+                                    val aid = articleId ?: return@LaunchedEffect
                                     val position =
-                                        viewModel.restoreReadingPosition(articleId)
+                                        viewModel.restoreReadingPosition(aid)
                                             ?: return@LaunchedEffect
                                     when (renderer) {
                                         ReadingRendererPreference.WebView -> {
@@ -293,9 +320,11 @@ fun ReadingPage(
                                 }
 
                                 // S26 — persist on scroll-idle (debounced 300 ms).
-                                LaunchedEffect(readerState.articleId, renderer) {
-                                    val articleId =
-                                        readerState.articleId ?: return@LaunchedEffect
+                                // Lane 4 defect 2 — frozen snapshot id: an
+                                // exiting instance can never persist its outgoing
+                                // scroll position under the NEW article's id.
+                                LaunchedEffect(articleId, renderer) {
+                                    val aid = articleId ?: return@LaunchedEffect
                                     if (renderer == ReadingRendererPreference.WebView) {
                                         snapshotFlow { scrollState.value }
                                             .debounce(300)
@@ -303,7 +332,7 @@ fun ReadingPage(
                                                 val max = scrollState.maxValue
                                                 if (max > 0) {
                                                     viewModel.persistReadingPosition(
-                                                        articleId,
+                                                        aid,
                                                         value * 10000 / max,
                                                         max,
                                                     )
@@ -311,14 +340,14 @@ fun ReadingPage(
                                             }
                                     } else {
                                         snapshotFlow {
-                                            listState.firstVisibleItemIndex to
-                                                listState.firstVisibleItemScrollOffset
-                                        }
+                                                listState.firstVisibleItemIndex to
+                                                    listState.firstVisibleItemScrollOffset
+                                            }
                                             .debounce(300)
                                             .collect { (index, offset) ->
                                                 if (index > 0 || offset > 0) {
                                                     viewModel.persistReadingPosition(
-                                                        articleId,
+                                                        aid,
                                                         index,
                                                         offset,
                                                     )
@@ -328,12 +357,13 @@ fun ReadingPage(
                                 }
 
                                 // S26 — persist on ON_PAUSE / navigation-away.
-                                DisposableEffect(lifecycleOwner, readerState.articleId, renderer) {
+                                // Lane 4 defect 2 — frozen snapshot id (see above).
+                                DisposableEffect(lifecycleOwner, articleId, renderer) {
                                     val observer =
                                         LifecycleEventObserver { _, event ->
                                             if (event == Lifecycle.Event.ON_PAUSE) {
-                                                val articleId = readerState.articleId
-                                                if (articleId != null) {
+                                                val aid = articleId
+                                                if (aid != null) {
                                                     scope.launch {
                                                         if (renderer ==
                                                             ReadingRendererPreference.WebView
@@ -341,17 +371,17 @@ fun ReadingPage(
                                                             val max = scrollState.maxValue
                                                             if (max > 0) {
                                                                 viewModel.persistReadingPosition(
-                                                                    articleId,
+                                                                    aid,
                                                                     scrollState.value * 10000 / max,
                                                                     max,
                                                                 )
                                                             }
                                                         } else if (
                                                             listState.firstVisibleItemIndex > 0 ||
-                                                            listState.firstVisibleItemScrollOffset > 0
+                                                                listState.firstVisibleItemScrollOffset > 0
                                                         ) {
                                                             viewModel.persistReadingPosition(
-                                                                articleId,
+                                                                aid,
                                                                 listState.firstVisibleItemIndex,
                                                                 listState.firstVisibleItemScrollOffset,
                                                             )
@@ -530,10 +560,11 @@ fun ReadingPage(
                 viewModel.downloadImage(
                     it,
                     onSuccess = { context.showToast(imageSavedToast) },
-                    onFailure = {
-                        // FIXME: crash the app for error report
-                        th ->
-                        throw th
+                    // Lane 4 defect 4 — a failed image save is user-visible
+                    // feedback, never a crash (was `throw th` under a FIXME).
+                    onFailure = { th ->
+                        Timber.w(th, "Failed to save image")
+                        context.showToast(imageSaveFailedToast)
                     },
                 )
             },

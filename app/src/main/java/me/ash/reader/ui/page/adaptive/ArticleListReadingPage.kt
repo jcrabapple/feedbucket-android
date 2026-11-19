@@ -19,6 +19,7 @@ import androidx.compose.material3.adaptive.navigation.NavigableListDetailPaneSca
 import androidx.compose.material3.adaptive.navigation.ThreePaneScaffoldNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -135,9 +136,16 @@ fun ArticleListReaderPage(
                 exitTransition =
                     motionDataProvider.calculateExitTransition(paneRole, reducedMotion),
             ) {
+                // Lane 4 defect 5 — a bare Executors.newSingleThreadExecutor()
+                // in the provider created (and leaked) a thread on every
+                // recomposition. Remember one executor for this pane's
+                // composition and shut it down when the pane leaves.
+                val textMeasureExecutor = remember { Executors.newSingleThreadExecutor() }
+                DisposableEffect(textMeasureExecutor) {
+                    onDispose { textMeasureExecutor.shutdown() }
+                }
                 CompositionLocalProvider(
-                    LocalBackgroundTextMeasurementExecutor provides
-                        Executors.newSingleThreadExecutor()
+                    LocalBackgroundTextMeasurementExecutor provides textMeasureExecutor
                 ) {
                     Box(modifier = Modifier.alpha(animatedListAlpha)) {
                         FlowPage(
