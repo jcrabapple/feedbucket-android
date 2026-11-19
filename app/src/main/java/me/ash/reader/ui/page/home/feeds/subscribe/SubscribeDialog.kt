@@ -144,7 +144,7 @@ fun SubscribeDialog(
                                 allowNotificationPresetOnClick = {
                                     subscribeViewModel.toggleAllowNotificationPreset()
                                 },
-                                parseFullContentPresetOnClick = {
+                                fullContentPresetOnClick = {
                                     subscribeViewModel.toggleParseFullContentPreset()
                                 },
                                 openInBrowserPresetOnClick = {

@@ -52,6 +52,13 @@ fun BottomBar(
     isNextArticleAvailable: Boolean,
     isFullContent: Boolean,
     isBoldCharacters: Boolean,
+    // E11 — an extraction is in flight: the article button is disabled
+    // (the content area shows the E10 Loading indicator).
+    isExtracting: Boolean = false,
+    // E13 — transient (≤3 s) "unavailable" tint after an explicit
+    // MANUAL/RE_EXTRACT failure. Tint-only ephemeral state: no focus
+    // change, no dialog/toast, stable contentDescription (TalkBack).
+    extractFailed: Boolean = false,
     ttsButton: @Composable () -> Unit,
     onUnread: (isUnread: Boolean) -> Unit = {},
     onStarred: (isStarred: Boolean) -> Unit = {},
@@ -142,8 +149,13 @@ fun BottomBar(
                             onNextArticle()
                         }
                         ttsButton()
+                        // E11 — extract-when-none / toggle-when-extracted is
+                        // routed by the caller; the button keeps its position,
+                        // 48.dp target, haptic, icon and stable
+                        // contentDescription (S37/E13). Busy disables it;
+                        // a transient failure shows the ≤3 s error tint.
                         CanBeDisabledIconButton(
-                            disabled = false,
+                            disabled = isExtracting,
                             modifier = Modifier.size(48.dp),
                             imageVector = if (isFullContent) {
                                 Icons.AutoMirrored.Rounded.Article
@@ -151,10 +163,10 @@ fun BottomBar(
                                 Icons.AutoMirrored.Outlined.Article
                             },
                             contentDescription = stringResource(R.string.parse_full_content),
-                            tint = if (isFullContent) {
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.outline
+                            tint = when {
+                                extractFailed -> MaterialTheme.colorScheme.error
+                                isFullContent -> MaterialTheme.colorScheme.onSecondaryContainer
+                                else -> MaterialTheme.colorScheme.outline
                             },
                         ) {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)

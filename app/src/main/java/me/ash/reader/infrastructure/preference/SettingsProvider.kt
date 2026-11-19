@@ -135,6 +135,7 @@ class SettingsProvider @Inject constructor(
             LocalMarkAsReadOnScroll provides settings.markAsReadOnScroll,
             LocalHideEmptyGroups provides settings.hideEmptyGroups,
             LocalMarkReadOnOpen provides settings.markReadOnOpen,
+            LocalAutoExtractFullContent provides settings.autoExtractFullContent,
             LocalMarkAllReadConfirmation provides settings.markAllReadConfirmation,
             LocalHideRecentlyRead provides settings.hideRecentlyRead,
             LocalPullToSwitchArticle provides settings.pullToSwitchArticle,

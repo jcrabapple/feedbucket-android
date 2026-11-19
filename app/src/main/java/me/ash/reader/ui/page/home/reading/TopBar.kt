@@ -24,7 +24,9 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Downloading
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MenuOpen
@@ -69,6 +71,15 @@ fun TopBar(
     // ArticleDownload state string (pending/downloading/ready/failed).
     downloadState: String? = null,
     onDownloadClick: () -> Unit = {},
+    // E12 — re-extract action: VISIBLE only when the article carries a
+    // stored extraction (`fullContent != null`); in-flight state mirrors
+    // the S27a download grammar; disabled while running.
+    isExtracted: Boolean = false,
+    isReExtracting: Boolean = false,
+    // E13 — transient (≤3 s) failure tint; never steals focus, stable
+    // contentDescription (TalkBack).
+    reExtractFailed: Boolean = false,
+    onReExtractClick: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val sharedContent = LocalSharedContent.current
@@ -180,6 +191,30 @@ fun TopBar(
                             tint = downloadTint,
                         ) {
                             onDownloadClick()
+                        }
+                        // E12 — MANUAL re-extract, extracted-only (fourth
+                        // action after Palette/Share/Download, icon-only per
+                        // the toolbar grammar). Busy state mirrors the S27a
+                        // download pattern: in-flight icon, disabled while
+                        // running; failure shows the ≤3 s transient error
+                        // tint (E13) with the contentDescription unchanged.
+                        // The 48.dp target floor is enforced by the
+                        // FeedbackIconButton component itself.
+                        if (isExtracted) {
+                            FeedbackIconButton(
+                                modifier = Modifier.size(20.dp),
+                                imageVector =
+                                    if (isReExtracting) Icons.Outlined.Sync
+                                    else Icons.Outlined.Refresh,
+                                contentDescription =
+                                    stringResource(R.string.re_extract_full_article),
+                                tint =
+                                    if (reExtractFailed) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurface,
+                                enabled = !isReExtracting,
+                            ) {
+                                onReExtractClick()
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),

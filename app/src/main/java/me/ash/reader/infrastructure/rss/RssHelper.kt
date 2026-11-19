@@ -12,7 +12,6 @@ import com.rometools.rome.io.SyndFeedInput
 import com.rometools.rome.io.XmlReader
 import java.io.ByteArrayInputStream
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.nio.charset.Charset
 import java.util.*
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
@@ -144,57 +143,6 @@ constructor(
             }
         val fallback = links.firstOrNull()
         return (preferred ?: fallback)?.absUrl("href")?.takeIf { it.isNotBlank() }
-    }
-
-    @Throws(Exception::class)
-    suspend fun parseFullContent(link: String, title: String): String {
-        return withContext(ioDispatcher) {
-            val response = response(okHttpClient, link)
-            if (response.commonIsSuccessful) {
-                val responseBody = response.body
-                val charset = responseBody.contentType()?.charset()
-                val content =
-                    responseBody.source().use {
-                        if (charset != null) {
-                            return@use it.readString(charset)
-                        }
-
-                        val peekContent = it.peek().readString(Charsets.UTF_8)
-
-                        val charsetFromMeta =
-                            runCatching {
-                                    val element =
-                                        Jsoup.parse(peekContent, link)
-                                            .selectFirst("meta[http-equiv=content-type]")
-                                    return@runCatching if (element == null) Charsets.UTF_8
-                                    else {
-                                        element
-                                            .attr("content")
-                                            .substringAfter("charset=")
-                                            .removeSurrounding("\"")
-                                            .lowercase()
-                                            .let { Charset.forName(it) }
-                                    }
-                                }
-                                .getOrDefault(Charsets.UTF_8)
-
-                        if (charsetFromMeta == Charsets.UTF_8) {
-                            peekContent
-                        } else {
-                            it.readString(charsetFromMeta)
-                        }
-                    }
-
-                val articleContent = Readability.parseToElement(content, link)
-                articleContent?.let {
-                    val h1Element = articleContent.selectFirst("h1")
-                    if (h1Element != null && h1Element.hasText() && h1Element.text() == title) {
-                        h1Element.remove()
-                    }
-                    articleContent.toString()
-                } ?: throw IOException("articleContent is null")
-            } else throw IOException(response.message)
-        }
     }
 
     suspend fun queryRssXml(

@@ -40,6 +40,7 @@ import me.ash.reader.domain.model.article.ArticleFlowItem
 import me.ash.reader.domain.model.article.ArticleWithFeed
 import me.ash.reader.domain.model.article.Neighbors
 import me.ash.reader.domain.model.article.ReadLifecycle
+import me.ash.reader.domain.model.extract.TeaserTrigger
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.general.MarkAsReadConditions
 import me.ash.reader.domain.model.position.PositionScope
@@ -49,6 +50,9 @@ import me.ash.reader.domain.model.position.RestoredPosition
 import me.ash.reader.domain.model.download.ArticleDownload
 import me.ash.reader.domain.repository.DownloadDao
 import me.ash.reader.domain.service.DownloadService
+import me.ash.reader.domain.service.ExtractCoordinator
+import me.ash.reader.domain.service.ExtractMode
+import me.ash.reader.domain.service.ExtractOutcome
 import me.ash.reader.domain.service.GoogleReaderRssService
 import me.ash.reader.domain.service.LocalRssService
 import me.ash.reader.domain.service.RssService
@@ -59,10 +63,12 @@ import me.ash.reader.infrastructure.di.ApplicationScope
 import me.ash.reader.infrastructure.di.IODispatcher
 import me.ash.reader.infrastructure.preference.PullToLoadNextFeedPreference
 import me.ash.reader.infrastructure.preference.SettingsProvider
-import me.ash.reader.infrastructure.rss.ReaderCacheHelper
 import timber.log.Timber
 
 private const val TAG = "FlowViewModel"
+
+/** E13 — the transient extraction-failure tint lasts at most 3 seconds. */
+private const val EXTRACT_FAILURE_TINT_MILLIS = 3_000L
 
 @OptIn(FlowPreview::class)
 @HiltViewModel()
@@ -76,7 +82,7 @@ constructor(
     private val filterStateUseCase: FilterStateUseCase,
     private val groupWithFeedsListUseCase: GroupWithFeedsListUseCase,
     private val settingsProvider: SettingsProvider,
-    private val readerCacheHelper: ReaderCacheHelper,
+    private val extractCoordinator: ExtractCoordinator,
     val textToSpeechManager: TextToSpeechManager,
     private val imageDownloader: AndroidImageDownloader,
     private val articleListUseCase: ArticlePagingListUseCase,
@@ -528,19 +534,48 @@ constructor(
         _readerState.update { ReaderState() }
     }
 
+    /**
+     * E8/E10 — on-open render state machine. Evaluation order (binding):
+     *  1. `fullContent != null` → render the stored extraction (no network);
+     *  2. `feed.isFullContent` → FORCE extraction (E9 — independent of the
+     *     E20 global toggle and of the E6 teaser trigger);
+     *  3. global toggle ON (E20) AND E6 trigger → AUTO extraction;
+     *  4. else → `Description(rawDescription)`.
+     *
+     * While an extraction runs the state is `Loading` + `isExtracting` (the
+     * existing `Content.kt` indicator, E10); success updates the state
+     * IN PLACE (E4 — no Paging invalidation, no generation roll); ANY
+     * failure falls back silently to `Description` (E10/E21 — the legacy
+     * error-wall content state is deleted).
+     */
     suspend fun ReaderState.renderContent(articleWithFeed: ArticleWithFeed): ReaderState {
-        val contentState =
-            if (articleWithFeed.feed.isFullContent) {
-                val fullContent =
-                    readerCacheHelper.readFullContent(articleWithFeed.article.id).getOrNull()
-                if (fullContent != null) ReaderState.FullContent(fullContent)
-                else {
-                    renderFullContent()
-                    ReaderState.Loading
-                }
-            } else ReaderState.Description(articleWithFeed.article.rawDescription)
-
-        return copy(content = contentState)
+        val article = articleWithFeed.article
+        val feed = articleWithFeed.feed
+        // 1 — stored extraction: render the row's sanitized HTML, zero network.
+        val stored = article.fullContent
+        if (stored != null) return copy(content = ReaderState.FullContent(stored))
+        // 2 — flagged feed: force regardless of the global toggle (E9/E20
+        // independence). PREFETCH is the coordinator's forced best-effort
+        // mode: trigger bypassed, fresh-guard set, fully silent failure.
+        if (feed.isFullContent) {
+            launchExtraction(articleWithFeed, ExtractMode.PREFETCH)
+            return copy(content = ReaderState.Loading, isExtracting = true)
+        }
+        // 3 — adaptive on-open path: E20 global gate + E6 teaser trigger.
+        val autoExtractEnabled = settingsProvider.settings.autoExtractFullContent.value
+        val isTeaser =
+            TeaserTrigger.isTeaserCandidate(
+                link = article.link,
+                fullContent = article.fullContent,
+                rawDescription = article.rawDescription,
+                medianBodyLength = feed.medianBodyLength,
+            )
+        if (autoExtractEnabled && isTeaser) {
+            launchExtraction(articleWithFeed, ExtractMode.AUTO)
+            return copy(content = ReaderState.Loading, isExtracting = true)
+        }
+        // 4 — feed content as-is.
+        return copy(content = ReaderState.Description(article.rawDescription))
     }
 
     fun renderDescriptionContent() {
@@ -551,29 +586,136 @@ constructor(
         }
     }
 
+    /**
+     * E11 — toggle path when a stored extraction exists: renders the row's
+     * `fullContent`. Pure view switch — zero network; the legacy fetch +
+     * error-wall branch is deleted (E10).
+     */
     fun renderFullContent() {
-        val fetchJob =
-            viewModelScope.launch {
-                readerCacheHelper
-                    .readOrFetchFullContent(currentArticle!!)
-                    .onSuccess { content ->
-                        _readerState.update {
-                            it.copy(content = ReaderState.FullContent(content = content))
-                        }
-                    }
-                    .onFailure { th ->
-                        _readerState.update {
-                            it.copy(content = ReaderState.Error(th.message.toString()))
-                        }
-                    }
-            }
-        viewModelScope.launch {
-            delay(100L)
-            if (fetchJob.isActive) {
-                setLoading()
+        val stored = currentArticle?.fullContent ?: return
+        _readerState.update { it.copy(content = ReaderState.FullContent(content = stored)) }
+    }
+
+    /**
+     * E11 — MANUAL extract entry point (BottomBar article button when
+     * `fullContent == null`): runs for ANY article, any feed, regardless of
+     * the E6 trigger or the E20 toggle (explicit user intent, web parity).
+     * Busy → the button is disabled and the content area shows the E10
+     * `Loading` indicator; success → `FullContent`; failure → silent
+     * `Description` fallback + the ≤3 s transient icon tint (E13).
+     */
+    fun extractFullContent() {
+        val articleWithFeed = readingUiState.value.articleWithFeed ?: return
+        if (_readerState.value.isExtracting) return // busy guard (E11)
+        _readerState.update { it.copy(content = ReaderState.Loading, isExtracting = true) }
+        launchExtraction(articleWithFeed, ExtractMode.MANUAL)
+    }
+
+    /**
+     * E12 — MANUAL re-extract (TopBar action, extracted-only rows). Busy:
+     * the content stays rendered while `isExtracting` drives the in-flight
+     * icon (S27a download-state grammar). Success updates the stored row;
+     * the rendered `FullContent` view refreshes in place, and a user
+     * viewing `Description` is NEVER force-switched. Failure leaves the
+     * stored extraction untouched (silent + transient tint, E13/E21).
+     */
+    fun reExtractFullContent() {
+        val articleWithFeed = readingUiState.value.articleWithFeed ?: return
+        if (articleWithFeed.article.fullContent == null) return // extracted-only (E12)
+        if (_readerState.value.isExtracting) return
+        _readerState.update { it.copy(isExtracting = true) }
+        launchExtraction(articleWithFeed, ExtractMode.RE_EXTRACT)
+    }
+
+    /**
+     * Runs one extraction on the single E2 pipeline. Completion updates the
+     * reader state IN PLACE — extraction never rolls a list generation nor
+     * refreshes Paging (E4/E22: the write leaves `rawDescription` /
+     * `shortDescription` untouched, so the flow preview cannot change).
+     */
+    private fun launchExtraction(articleWithFeed: ArticleWithFeed, mode: ExtractMode) {
+        val articleId = articleWithFeed.article.id
+        viewModelScope.launch(ioDispatcher) {
+            when (
+                val outcome =
+                    extractCoordinator.extract(articleWithFeed.article, articleWithFeed.feed, mode)
+            ) {
+                is ExtractOutcome.Stored -> onExtractionStored(articleId, mode)
+                is ExtractOutcome.Skipped ->
+                    onExtractionNotStored(articleWithFeed, mode, failed = false)
+                is ExtractOutcome.Failure ->
+                    onExtractionNotStored(articleWithFeed, mode, failed = true)
             }
         }
     }
+
+    /** E4/E10/E12 — in-place state update on success; no list invalidation. */
+    private suspend fun onExtractionStored(articleId: String, mode: ExtractMode) {
+        // Re-read the row so the rendered state and the in-memory article
+        // carry the DB truth (sanitized fullContent + extractedAt, E3).
+        val fresh = rssService.get().findArticleById(articleId)
+        if (fresh != null) {
+            _readingUiState.update { it.copy(articleWithFeed = fresh) }
+        }
+        val stored = fresh?.article?.fullContent
+        _readerState.update { state ->
+            val content =
+                when {
+                    // E12: re-extract success while viewing `Description`
+                    // updates ONLY the stored row — no forced view switch
+                    // (keeps the S22 diff pane reachable, E22b).
+                    mode == ExtractMode.RE_EXTRACT && state.content !is ReaderState.FullContent ->
+                        state.content
+
+                    stored != null -> ReaderState.FullContent(stored)
+                    else -> state.content
+                }
+            state.copy(content = content, isExtracting = false, extractFailed = false)
+        }
+    }
+
+    /**
+     * E10/E13/E21 — silent fallback: `Loading` → `Description` (the feed
+     * content the user would have seen anyway). The transient (≤3 s)
+     * "unavailable" tint fires ONLY for explicit MANUAL/RE_EXTRACT
+     * failures; AUTO and force-on-open PREFETCH failures are fully silent.
+     */
+    private fun onExtractionNotStored(
+        articleWithFeed: ArticleWithFeed,
+        mode: ExtractMode,
+        failed: Boolean,
+    ) {
+        val transientSignal =
+            failed && (mode == ExtractMode.MANUAL || mode == ExtractMode.RE_EXTRACT)
+        _readerState.update { state ->
+            state.copy(
+                isExtracting = false,
+                extractFailed = transientSignal,
+                content =
+                    if (state.content is ReaderState.Loading) {
+                        ReaderState.Description(articleWithFeed.article.rawDescription)
+                    } else {
+                        state.content
+                    },
+            )
+        }
+        if (transientSignal) {
+            // E13 — ephemeral state, never persisted, never a toast/dialog,
+            // and it never steals focus (tint-only change on the existing
+            // icons, stable contentDescriptions). The token keeps a stale
+            // clear from an earlier failure shortening the current tint.
+            val token = ++extractFailureToken
+            viewModelScope.launch {
+                delay(EXTRACT_FAILURE_TINT_MILLIS)
+                if (token == extractFailureToken) {
+                    _readerState.update { it.copy(extractFailed = false) }
+                }
+            }
+        }
+    }
+
+    /** E13 transient-tint generation token (see [onExtractionNotStored]). */
+    private var extractFailureToken = 0
 
     fun updateReadStatus(isUnread: Boolean) {
         readingUiState.value.articleWithFeed?.let {
@@ -591,10 +733,6 @@ constructor(
                 rssService.get().markAsStarred(articleId = it.id, isStarred = isStarred)
             }
         }
-    }
-
-    private fun setLoading() {
-        _readerState.update { it.copy(content = ReaderState.Loading) }
     }
 
     /**
@@ -732,15 +870,31 @@ data class ReaderState(
     val listIndex: Int? = null,
     val nextArticle: PrefetchResult? = null,
     val previousArticle: PrefetchResult? = null,
+    /**
+     * E10/E11/E12 — an extraction is in flight on the single E2 pipeline:
+     * the BottomBar article button is disabled (E11), the TopBar re-extract
+     * icon shows its in-flight state (E12), and AUTO/MANUAL-from-description
+     * render the existing `Loading` indicator.
+     */
+    val isExtracting: Boolean = false,
+    /**
+     * E13 — transient (≤3 s) "unavailable" tint on the extraction icons
+     * after an explicit MANUAL/RE_EXTRACT failure. Ephemeral UI state only:
+     * never persisted, never a dialog/toast, never a focus change; AUTO and
+     * force-on-open failures are fully silent and never set it.
+     */
+    val extractFailed: Boolean = false,
 ) {
     data class PrefetchResult(val articleId: String, val index: Int)
 
+    // E10 — `Error` was REMOVED from the sealed interface: the extraction
+    // path was its only producer (the legacy renderFullContent error wall),
+    // and every failure now falls back silently (E21).
     sealed interface ContentState {
         val text: String?
             get() {
                 return when (this) {
                     is Description -> content
-                    is Error -> message
                     is FullContent -> content
                     Loading -> null
                 }
@@ -750,8 +904,6 @@ data class ReaderState(
     data class FullContent(val content: String) : ContentState
 
     data class Description(val content: String) : ContentState
-
-    data class Error(val message: String) : ContentState
 
     data object Loading : ContentState
 }

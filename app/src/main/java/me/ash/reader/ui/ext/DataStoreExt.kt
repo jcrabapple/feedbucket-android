@@ -202,6 +202,8 @@ sealed interface PreferencesKey {
         const val openLink = "openLink"
         const val openLinkAppSpecificBrowser = "openLinkAppSpecificBrowser"
         const val sharedContent = "sharedContent"
+        // E20 (SPEC-EXTRACT-v1) — adaptive on-open extraction toggle
+        const val autoExtractFullContent = "autoExtractFullContent"
 
         // Languages
         const val languages = "languages"
@@ -281,6 +283,7 @@ sealed interface PreferencesKey {
                 IntKey(openLink),
                 StringKey(openLinkAppSpecificBrowser),
                 IntKey(sharedContent),
+                BooleanKey(autoExtractFullContent),
                 // Languages
                 IntKey(languages),
             )
@@ -372,6 +375,8 @@ data class DataStoreKey<T>(val key: Preferences.Key<T>, val type: Class<T>) {
         const val openLink = "openLink"
         const val openLinkAppSpecificBrowser = "openLinkAppSpecificBrowser"
         const val sharedContent = "sharedContent"
+        // E20 (SPEC-EXTRACT-v1) — adaptive on-open extraction toggle
+        const val autoExtractFullContent = "autoExtractFullContent"
 
         // Languages
         const val languages = "languages"
@@ -535,6 +540,11 @@ data class DataStoreKey<T>(val key: Preferences.Key<T>, val type: Class<T>) {
                         String::class.java,
                     ),
                 sharedContent to DataStoreKey(intPreferencesKey(sharedContent), Int::class.java),
+                autoExtractFullContent to
+                    DataStoreKey(
+                        booleanPreferencesKey(autoExtractFullContent),
+                        Boolean::class.java,
+                    ),
                 // Languages
                 languages to DataStoreKey(intPreferencesKey(languages), Int::class.java),
             )

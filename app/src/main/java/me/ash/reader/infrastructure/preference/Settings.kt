@@ -77,6 +77,8 @@ data class Settings(
     val markAsReadOnScroll: MarkAsReadOnScrollPreference = MarkAsReadOnScrollPreference.default,
     val hideEmptyGroups: HideEmptyGroupsPreference = HideEmptyGroupsPreference.default,
     val markReadOnOpen: MarkReadOnOpenPreference = MarkReadOnOpenPreference.default,
+    // E20 (SPEC-EXTRACT-v1) — adaptive on-open extraction, default ON
+    val autoExtractFullContent: AutoExtractPreference = AutoExtractPreference.default,
     val markAllReadConfirmation: MarkAllReadConfirmationPreference = MarkAllReadConfirmationPreference.default,
     val hideRecentlyRead: HideRecentlyReadPreference = HideRecentlyReadPreference.default,
     val pullToSwitchFeed: PullToLoadNextFeedPreference = PullToLoadNextFeedPreference.default,

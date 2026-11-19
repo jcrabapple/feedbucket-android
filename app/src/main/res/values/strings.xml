@@ -60,6 +60,8 @@
     <string name="all_allow_notification_toast">Notifications from the \"%1$s\" group are allowed</string>
     <string name="all_deny_notification_toast">Notifications from the \"%1$s\" group are denied</string>
     <string name="parse_full_content">Parse full content</string>
+    <!-- E12 (SPEC-EXTRACT-v1) — TopBar re-extract action, extracted articles only -->
+    <string name="re_extract_full_article">Re-extract full article</string>
     <string name="all_parse_full_content_tips">Full content parsing of all articles in the \"%1$s\" group</string>
     <string name="all_parse_full_content_toast">Full content parsing of all articles in the \"%1$s\" group is allowed</string>
     <string name="all_deny_parse_full_content_toast">Full content parsing of all articles in the \"%1$s\" group is denied</string>
@@ -394,6 +396,8 @@
     <string name="notifications_desc">Get notifications when new unread articles are available</string>
     <string name="open_in_browser_desc">Open articles in the browser</string>
     <string name="parse_full_content_desc">Fetch full articles from webpages</string>
+    <!-- E20 (SPEC-EXTRACT-v1) — settings row title; desc reuses parse_full_content_desc -->
+    <string name="auto_extract_full_articles">Auto-extract full articles</string>
     <string name="enable">Enable</string>
     <string name="disable">Disable</string>
 

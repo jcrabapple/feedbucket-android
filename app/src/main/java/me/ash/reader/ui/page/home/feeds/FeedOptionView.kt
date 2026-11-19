@@ -41,7 +41,7 @@ fun FeedOptionView(
     notSubscribeMode: Boolean = false,
     selectedGroupId: String = "",
     allowNotificationPresetOnClick: () -> Unit = {},
-    parseFullContentPresetOnClick: () -> Unit = {},
+    fullContentPresetOnClick: () -> Unit = {},
     openInBrowserPresetOnClick: () -> Unit = {},
     clearArticlesOnClick: () -> Unit = {},
     unsubscribeOnClick: () -> Unit = {},
@@ -62,7 +62,7 @@ fun FeedOptionView(
             showUnsubscribe = showUnsubscribe,
             notSubscribeMode = notSubscribeMode,
             allowNotificationPresetOnClick = allowNotificationPresetOnClick,
-            parseFullContentPresetOnClick = parseFullContentPresetOnClick,
+            fullContentPresetOnClick = fullContentPresetOnClick,
             openInBrowserPresetOnClick = openInBrowserPresetOnClick,
             clearArticlesOnClick = clearArticlesOnClick,
             unsubscribeOnClick = unsubscribeOnClick,
@@ -110,7 +110,7 @@ private fun Preset(
     showUnsubscribe: Boolean = true,
     notSubscribeMode: Boolean = false,
     allowNotificationPresetOnClick: () -> Unit = {},
-    parseFullContentPresetOnClick: () -> Unit = {},
+    fullContentPresetOnClick: () -> Unit = {},
     openInBrowserPresetOnClick: () -> Unit = {},
     clearArticlesOnClick: () -> Unit = {},
     unsubscribeOnClick: () -> Unit = {},
@@ -132,7 +132,7 @@ private fun Preset(
                     )
                 },
             ) {
-                parseFullContentPresetOnClick()
+                fullContentPresetOnClick()
             }
         }
         item {

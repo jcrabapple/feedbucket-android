@@ -25,6 +25,7 @@ import me.ash.reader.infrastructure.preference.InitialFilterPreference
 import me.ash.reader.infrastructure.preference.InitialPagePreference
 import me.ash.reader.infrastructure.preference.LocalArticleListSwipeEndAction
 import me.ash.reader.infrastructure.preference.LocalArticleListSwipeStartAction
+import me.ash.reader.infrastructure.preference.LocalAutoExtractFullContent
 import me.ash.reader.infrastructure.preference.LocalHideEmptyGroups
 import me.ash.reader.infrastructure.preference.LocalInitialFilter
 import me.ash.reader.infrastructure.preference.LocalInitialPage
@@ -63,6 +64,7 @@ fun InteractionPage(
     val swipeToEndAction = LocalArticleListSwipeEndAction.current
     val markAsReadOnScroll = LocalMarkAsReadOnScroll.current
     val hideEmptyGroups = LocalHideEmptyGroups.current
+    val autoExtractFullContent = LocalAutoExtractFullContent.current
     val sortUnreadArticles = LocalSortUnreadArticles.current
     val pullToSwitchArticle = LocalPullToSwitchArticle.current
     val openLink = LocalOpenLink.current
@@ -196,6 +198,21 @@ fun InteractionPage(
                         onClick = { pullToSwitchArticle.toggle(context, scope) }) {
                         RYSwitch(activated = pullToSwitchArticle.value) {
                             pullToSwitchArticle.toggle(context, scope)
+                        }
+                    }
+                    // E20 (SPEC-EXTRACT-v1) — global auto-extract toggle,
+                    // default ON; gates ONLY the adaptive on-open path (E8),
+                    // never the per-feed flag (E9) or manual extraction
+                    // (E11/E12). `hide_empty_groups` row pattern.
+                    SettingItem(
+                        title = stringResource(R.string.auto_extract_full_articles),
+                        desc = stringResource(R.string.parse_full_content_desc),
+                        onClick = {
+                            autoExtractFullContent.toggle(context, scope)
+                        },
+                    ) {
+                        RYSwitch(activated = autoExtractFullContent.value) {
+                            autoExtractFullContent.toggle(context, scope)
                         }
                     }
                     Spacer(modifier = Modifier.height(24.dp))

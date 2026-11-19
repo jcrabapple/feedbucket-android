@@ -105,6 +105,13 @@ fun ReadingPage(
             true
         }
 
+    // E11/E12 — the row carries a stored extraction (`fullContent != null`,
+    // kept fresh in place by the reader state machine on success — E4/E22,
+    // no Paging invalidation). Drives the BottomBar button semantics
+    // (extract-when-none / toggle-when-extracted) and the TopBar
+    // re-extract action visibility (extracted-only).
+    val hasStoredExtraction = readingUiState.articleWithFeed?.article?.fullContent != null
+
     var showTopDivider by remember { mutableStateOf(false) }
 
     //    LaunchedEffect(readerState.listIndex) {
@@ -146,6 +153,13 @@ fun ReadingPage(
                         // network constraint; fails fast to failed(network)).
                         downloadState = currentDownload?.state,
                         onDownloadClick = { viewModel.downloadCurrentArticle() },
+                        // E12 — re-extract action: visible ONLY while the row
+                        // carries a stored extraction; in-flight/busy state
+                        // mirrors the S27a download grammar.
+                        isExtracted = hasStoredExtraction,
+                        isReExtracting = readerState.isExtracting,
+                        reExtractFailed = readerState.extractFailed,
+                        onReExtractClick = { viewModel.reExtractFullContent() },
                     )
                 }
 
@@ -443,9 +457,11 @@ fun ReadingPage(
                         isUnread = readingUiState.isUnread,
                         isStarred = readingUiState.isStarred,
                         isNextArticleAvailable = isNextArticleAvailable,
-                        isFullContent =
-                            readerState.content is ReaderState.FullContent ||
-                                readerState.content is ReaderState.Error,
+                        isFullContent = readerState.content is ReaderState.FullContent,
+                        // E11 — busy disables the button; E13 — transient
+                        // (≤3 s) failure tint, shared with the TopBar icon.
+                        isExtracting = readerState.isExtracting,
+                        extractFailed = readerState.extractFailed,
                         isBoldCharacters = boldCharacters.value,
                         onUnread = { viewModel.updateReadStatus(it) },
                         onStarred = { viewModel.updateStarredStatus(it) },
@@ -456,8 +472,17 @@ fun ReadingPage(
                             }
                         },
                         onFullContent = {
-                            if (it) viewModel.renderFullContent()
-                            else viewModel.renderDescriptionContent()
+                            if (it) {
+                                // E11 semantics: extract-when-none (MANUAL —
+                                // explicit user intent, runs regardless of the
+                                // E6 trigger and the E20 toggle), toggle-when-
+                                // extracted (pure view switch to the stored
+                                // row — zero network).
+                                if (hasStoredExtraction) viewModel.renderFullContent()
+                                else viewModel.extractFullContent()
+                            } else {
+                                viewModel.renderDescriptionContent()
+                            }
                         },
                         onBoldCharacters = { (!boldCharacters).put(context, coroutineScope) },
                         onReadAloud = {

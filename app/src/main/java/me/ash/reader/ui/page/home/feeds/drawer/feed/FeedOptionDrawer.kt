@@ -107,7 +107,7 @@ fun FeedOptionDrawer(
                     allowNotificationPresetOnClick = {
                         feedOptionViewModel.changeAllowNotificationPreset()
                     },
-                    parseFullContentPresetOnClick = {
+                    fullContentPresetOnClick = {
                         feedOptionViewModel.changeParseFullContentPreset()
                     },
                     openInBrowserPresetOnClick = {

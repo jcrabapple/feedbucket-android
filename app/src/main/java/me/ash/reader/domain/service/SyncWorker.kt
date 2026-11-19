@@ -7,7 +7,6 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
 import me.ash.reader.domain.model.account.Account
-import me.ash.reader.infrastructure.rss.ReaderCacheHelper
 
 @HiltWorker
 class SyncWorker
@@ -16,7 +15,6 @@ constructor(
     @Assisted context: Context,
     @Assisted workerParams: WorkerParameters,
     private val rssService: RssService,
-    private val readerCacheHelper: ReaderCacheHelper,
     private val workManager: WorkManager,
     private val accountService: AccountService,
 ) : CoroutineWorker(context, workerParams) {
@@ -32,9 +30,10 @@ constructor(
             .get()
             .sync(accountId = accountId, feedId = feedId, groupId = groupId)
             .also {
-                rssService.get().clearKeepArchivedArticles().forEach {
-                    readerCacheHelper.deleteCacheFor(articleId = it.id)
-                }
+                // E3/E9 — the keep-archived cleanup stays; the legacy
+                // `deleteCacheFor` loop is gone with the disk cache (the
+                // canonical extraction store is the article row).
+                rssService.get().clearKeepArchivedArticles()
                 enqueuePostSyncChain(accountService.getAccountById(accountId))
             }
     }

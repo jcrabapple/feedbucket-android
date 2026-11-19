@@ -83,6 +83,7 @@ fun Preferences.toSettings(): Settings {
         markAsReadOnScroll = MarkAsReadOnScrollPreference.fromPreferences(this),
         hideEmptyGroups = HideEmptyGroupsPreference.fromPreferences(this),
         markReadOnOpen = MarkReadOnOpenPreference.fromPreferences(this),
+        autoExtractFullContent = AutoExtractPreference.fromPreferences(this),
         markAllReadConfirmation = MarkAllReadConfirmationPreference.fromPreferences(this),
         hideRecentlyRead = HideRecentlyReadPreference.fromPreferences(this),
         pullToSwitchFeed = PullToLoadNextFeedPreference.fromPreference(this),

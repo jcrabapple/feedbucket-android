@@ -1,5 +1,6 @@
 package me.ash.reader.domain.service
 
+import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
@@ -9,7 +10,10 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -138,10 +142,33 @@ class ExtractCoordinator(
     private val clock: () -> Long = { System.currentTimeMillis() },
     /** E15 cleaner seam — production default; injectable for failure-path tests. */
     private val cleaner: (html: String, title: String) -> String = ExtractCleaner::clean,
+    /**
+     * E3 one-time hygiene seam — the retired legacy disk cache directory
+     * (`cacheDir/readability`), deleted recursively on init. Null (default)
+     * skips the cleanup; the temp-dir unit-test seam passes a fixture dir.
+     */
+    private val legacyCacheDir: File? = null,
 ) {
 
     private val inFlightMutex = Mutex()
     private val inFlight = ConcurrentHashMap<String, CompletableDeferred<ExtractOutcome>>()
+
+    init {
+        // E3 — the disk cache is retired (the canonical store is the article
+        // row). One-time hygiene on first coordinator init after upgrade:
+        // bounded recursive delete on the IO dispatcher, failure IGNORED
+        // (Android may evict the cache anyway; no DB backfill — affected
+        // feeds re-extract under their existing contracts). Idempotent:
+        // once the dir is gone, every later init is a no-op.
+        legacyCacheDir?.let { dir ->
+            CoroutineScope(SupervisorJob() + ioDispatcher).launch {
+                runCatching { dir.deleteRecursively() }
+                    .onFailure {
+                        Timber.tag(TAG).d(it, "legacy cache delete failed (ignored, E3)")
+                    }
+            }
+        }
+    }
 
     private class Registration(
         val deferred: CompletableDeferred<ExtractOutcome>,
@@ -332,10 +359,13 @@ class ExtractCoordinator(
         else -> ExtractFailureReason.INTERNAL
     }
 
-    private companion object {
-        const val TAG = "RLog"
+    companion object {
+        private const val TAG = "RLog"
 
         /** E16.1 — `plainTextLength × 20 < rawHtml.length` ⇒ under 5% productive. */
-        const val PRODUCTIVE_RATIO_DENOMINATOR = 20L
+        private const val PRODUCTIVE_RATIO_DENOMINATOR = 20L
+
+        /** E3 — name of the retired legacy disk-cache dir under `cacheDir`. */
+        const val LEGACY_CACHE_DIR_NAME = "readability"
     }
 }
