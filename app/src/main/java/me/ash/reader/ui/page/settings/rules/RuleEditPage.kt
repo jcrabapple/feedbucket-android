@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.first
 import me.ash.reader.R
 import me.ash.reader.domain.model.group.GroupWithFeed
 import me.ash.reader.domain.model.rule.ActionRule
@@ -66,16 +67,23 @@ fun RuleEditPage(
     var groupsWithFeeds by remember { mutableStateOf<List<GroupWithFeed>>(emptyList()) }
     var appliedCount by remember { mutableStateOf<Int?>(null) }
 
+    // Review lane 3 defect 1: `rules` is a StateFlow — an unbounded
+    // `collect` here suspends forever and made the groupsWithFeeds load
+    // below unreachable for existing rules/mutes. `first { }` returns as
+    // soon as the rule appears, and the scope-picker data loads in its own
+    // effect so it never depends on the rule lookup completing.
     LaunchedEffect(ruleId) {
-        if (ruleId != 0L) {
-            viewModel.rules.collect { rules ->
-                val existing = rules.firstOrNull { it.id == ruleId }
-                if (existing != null && !loaded) {
-                    draft = existing
+        if (ruleId != 0L && !loaded) {
+            val rules = viewModel.rules.first { list -> list.any { it.id == ruleId } }
+            if (!loaded) {
+                rules.first { it.id == ruleId }.let {
+                    draft = it
                     loaded = true
                 }
             }
         }
+    }
+    LaunchedEffect(Unit) {
         groupsWithFeeds = viewModel.groupsWithFeeds()
     }
 

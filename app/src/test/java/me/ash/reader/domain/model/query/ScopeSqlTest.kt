@@ -15,10 +15,10 @@ import org.junit.Test
  */
 class ScopeSqlTest {
 
-    private val TERM = "(titleLower LIKE '%' || ? || '%' ESCAPE '\\' OR " +
-        "shortLower LIKE '%' || ? || '%' ESCAPE '\\' OR " +
-        "rawLower LIKE '%' || ? || '%' ESCAPE '\\' OR " +
-        "fullLower LIKE '%' || ? || '%' ESCAPE '\\')"
+    private val TERM = "(titleLower LIKE ? ESCAPE '\\' OR " +
+        "shortLower LIKE ? ESCAPE '\\' OR " +
+        "rawLower LIKE ? ESCAPE '\\' OR " +
+        "fullLower LIKE ? ESCAPE '\\')"
 
     private val VIEW_UNREAD = "(? = 'all' OR ? = 'unread' AND isUnread = 1 OR " +
         "? = 'updated' AND isUpdated = 1 OR ? = 'starred' AND isStarred = 1 OR " +
@@ -54,10 +54,10 @@ class ScopeSqlTest {
     fun `search terms render the canonical S11a clause and relevance ordering`() {
         val built = ScopeSql.rows(1, "all", null, null, false, SearchQuery.parse("sort:relevance foo"), emptyList())
         assertTrue(built.sql.contains("AND $TERM "))
-        val score = "( CASE WHEN titleLower LIKE '%' || ? || '%' ESCAPE '\\' THEN 5 ELSE 0 END + " +
-            "CASE WHEN shortLower LIKE '%' || ? || '%' ESCAPE '\\' THEN 2 ELSE 0 END + " +
-            "CASE WHEN rawLower LIKE '%' || ? || '%' ESCAPE '\\' OR " +
-            "fullLower LIKE '%' || ? || '%' ESCAPE '\\' THEN 1 ELSE 0 END )"
+        val score = "( CASE WHEN titleLower LIKE ? ESCAPE '\\' THEN 5 ELSE 0 END + " +
+            "CASE WHEN shortLower LIKE ? ESCAPE '\\' THEN 2 ELSE 0 END + " +
+            "CASE WHEN rawLower LIKE ? ESCAPE '\\' OR " +
+            "fullLower LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END )"
         assertTrue(built.sql.endsWith("ORDER BY ($score) DESC, date DESC, rowid DESC"))
         // WHERE args precede ORDER BY args
         assertEquals(listOf<Any?>(1, null, null, null, null, "all", "all", "all", "all", "all", "%foo%", "%foo%", "%foo%", "%foo%", "%foo%", "%foo%", "%foo%", "%foo%"), built.args)

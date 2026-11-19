@@ -260,6 +260,11 @@ class StateApplyLedgerTest {
             title = "r",
             query = "foo",
             effects = "mark_read",
+            // Explicit (non-allFeeds) scope: an EMPTY feed-id list matches
+            // nothing. (allFeeds rules scope by accountId inside
+            // RuleMatchSql and never pass through this guard — review
+            // lane 3 defect 3.)
+            allFeeds = false,
             createdAt = 1L,
         )
         assertEquals(0, service.applyToExisting(1, rule, emptyList()))

@@ -22,6 +22,7 @@ import me.ash.reader.domain.model.article.UpdateDetection
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.feed.ImportantNum
 import me.ash.reader.domain.model.query.QueryMatcher
+import me.ash.reader.domain.model.query.SearchSql
 import me.ash.reader.domain.model.query.TextNormalizer
 import me.ash.reader.domain.model.rule.ActionRule
 import me.ash.reader.domain.model.rule.ArticleApplyState
@@ -1154,7 +1155,14 @@ interface ArticleDao {
     /**
      * `tag:` CSV containment (S11a): matches when the normalized tag is a
      * whole CSV element of feed.tags — `tech` must NOT match `biotech`.
+     *
+     * Review lane 3 defect 4: the internal query declares `ESCAPE '\'` and
+     * this wrapper LIKE-escapes the tag, so `_`/`%` inside tag names match
+     * literally instead of acting as wildcards (SearchSql.renderTag parity).
      */
+    suspend fun queryArticlesByTag(accountId: Int, tag: String): List<Article> =
+        queryArticlesByTagInternal(accountId, SearchSql.escapeLike(tag))
+
     @Query(
         """
         SELECT * FROM article
@@ -1162,11 +1170,11 @@ interface ArticleDao {
         AND EXISTS (
             SELECT 1 FROM feed AS f2
             WHERE f2.id = article.feedId
-            AND (',' || f2.tags || ',' LIKE '%,' || :tag || ',%')
+            AND (',' || f2.tags || ',' LIKE '%,' || :tag || ',%' ESCAPE '\')
         )
         """
     )
-    suspend fun queryArticlesByTag(accountId: Int, tag: String): List<Article>
+    suspend fun queryArticlesByTagInternal(accountId: Int, tag: String): List<Article>
 
     /**
      * S15 — recentlyRead view: `readAt IS NOT NULL` ordered `readAt DESC, rowid

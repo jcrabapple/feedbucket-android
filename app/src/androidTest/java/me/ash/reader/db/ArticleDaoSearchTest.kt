@@ -217,6 +217,44 @@ class ArticleDaoSearchTest {
     }
 
     @Test
+    fun tagWildcardsMatchLiterallyNotAsLikeWildcards() = runBlocking {
+        // Review lane 3 defect 4: `_` and `%` inside tag names bind escaped
+        // (ESCAPE '\'), so `foo_bar` must not match `fooxbar` and `100%`
+        // must not match `1000`.
+        val feedUnderscore = Feed(
+            id = "1\$f3", name = "Underscore Feed", url = "https://example.com/u.xml",
+            groupId = "1\$g1", accountId = 1, tags = "foo_bar",
+        )
+        val feedLookalike = Feed(
+            id = "1\$f4", name = "Lookalike Feed", url = "https://example.com/l.xml",
+            groupId = "1\$g1", accountId = 1, tags = "fooxbar,1000",
+        )
+        val feedPercent = Feed(
+            id = "1\$f5", name = "Percent Feed", url = "https://example.com/p.xml",
+            groupId = "1\$g1", accountId = 1, tags = "100%",
+        )
+        db.feedDao().insert(feedUnderscore, feedLookalike, feedPercent)
+        insert(
+            article("u1", "Underscore", feedId = feedUnderscore.id),
+            article("l1", "Lookalike", feedId = feedLookalike.id),
+            article("p1", "Percent", feedId = feedPercent.id),
+        )
+        assertEquals(
+            listOf("1\$u1"),
+            db.articleDao().queryArticlesByTag(1, "foo_bar").map { it.id },
+        )
+        assertEquals(
+            listOf("1\$p1"),
+            db.articleDao().queryArticlesByTag(1, "100%").map { it.id },
+        )
+        // The lookalike tag still matches exactly.
+        assertEquals(
+            listOf("1\$l1"),
+            db.articleDao().queryArticlesByTag(1, "fooxbar").map { it.id },
+        )
+    }
+
+    @Test
     fun shadowColumnsAreWrittenAtInsert() = runBlocking {
         val a = article("a1", "FeedBucket Release Notes", raw = "Body Text Here")
         insert(a)

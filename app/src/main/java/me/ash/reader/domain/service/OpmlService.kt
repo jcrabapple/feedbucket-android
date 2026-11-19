@@ -83,53 +83,58 @@ class OpmlService @Inject constructor(
      * `htmlUrl` -> `siteUrl`). Both consumers round-trip either form.
      */
     @Throws(Exception::class)
-    suspend fun saveToString(accountId: Int, attachInfo: Boolean): String {
-        val defaultGroup = groupDao.queryById(getDefaultGroupId(accountId))
-        return OpmlWriter().write(
-            Opml(
-                "2.0",
-                Head(
-                    accountService.getCurrentAccount().name,
-                    Date().toString(), null, null, null,
-                    null, null, null, null,
-                    null, null, null, null,
-                ),
-                Body(groupDao.queryAllGroupWithFeed(accountId).map {
-                    Outline(
-                        mutableMapOf(
-                            "text" to it.group.name,
-                            "title" to it.group.name,
-                        ).apply {
-                            if (attachInfo) {
-                                put("isDefault", (it.group.id == defaultGroup?.id).toString())
+    suspend fun saveToString(accountId: Int, attachInfo: Boolean): String =
+        withContext(ioDispatcher) {
+            // Review lane 3 defect 5: OPML serialization (OpmlWriter + the
+            // group/feed DAO reads) must never run on the caller's
+            // dispatcher — MigrationViewModel.exportOpml() calls this from
+            // viewModelScope (Main).
+            val defaultGroup = groupDao.queryById(getDefaultGroupId(accountId))
+            OpmlWriter().write(
+                Opml(
+                    "2.0",
+                    Head(
+                        accountService.getCurrentAccount().name,
+                        Date().toString(), null, null, null,
+                        null, null, null, null,
+                        null, null, null, null,
+                    ),
+                    Body(groupDao.queryAllGroupWithFeed(accountId).map {
+                        Outline(
+                            mutableMapOf(
+                                "text" to it.group.name,
+                                "title" to it.group.name,
+                            ).apply {
+                                if (attachInfo) {
+                                    put("isDefault", (it.group.id == defaultGroup?.id).toString())
+                                }
+                            },
+                            it.feeds.map { feed ->
+                                Outline(
+                                    mutableMapOf(
+                                        "text" to feed.name,
+                                        "title" to feed.name,
+                                        "xmlUrl" to feed.url,
+                                        "htmlUrl" to feed.siteUrl.ifBlank { feed.url },
+                                    ).apply {
+                                        // S33: category = feed.tags (web export parity).
+                                        if (feed.tags.isNotBlank()) {
+                                            put("category", feed.tags)
+                                        }
+                                        if (attachInfo) {
+                                            put("isNotification", feed.isNotification.toString())
+                                            put("isFullContent", feed.isFullContent.toString())
+                                            put("isBrowser", feed.isBrowser.toString())
+                                        }
+                                    },
+                                    listOf()
+                                )
                             }
-                        },
-                        it.feeds.map { feed ->
-                            Outline(
-                                mutableMapOf(
-                                    "text" to feed.name,
-                                    "title" to feed.name,
-                                    "xmlUrl" to feed.url,
-                                    "htmlUrl" to feed.siteUrl.ifBlank { feed.url },
-                                ).apply {
-                                    // S33: category = feed.tags (web export parity).
-                                    if (feed.tags.isNotBlank()) {
-                                        put("category", feed.tags)
-                                    }
-                                    if (attachInfo) {
-                                        put("isNotification", feed.isNotification.toString())
-                                        put("isFullContent", feed.isFullContent.toString())
-                                        put("isBrowser", feed.isBrowser.toString())
-                                    }
-                                },
-                                listOf()
-                            )
-                        }
-                    )
-                })
-            )
-        )!!
-    }
+                        )
+                    })
+                )
+            )!!
+        }
 
     private fun getDefaultGroupId(accountId: Int): String = accountId.getDefaultGroupId()
 }

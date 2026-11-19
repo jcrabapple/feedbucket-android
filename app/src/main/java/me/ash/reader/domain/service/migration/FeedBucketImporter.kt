@@ -525,7 +525,17 @@ class FeedBucketImporter internal constructor(
                 showUpdates = feedRow.getValue("show_updates") != "0",
                 tags = tagCsv,
             )
-            feedDao.insertAll(listOf(feed))
+            // Review lane 3 defect 2: a deterministic feed id may already
+            // exist (the library already subscribes this URL, or the backup
+            // shares deterministic ids). An ABORT insert failed the WHOLE
+            // chunk; keep the pre-existing feed row as-is instead and mark
+            // its identity createdByRunId = null so removeImported() never
+            // deletes a row this run did not create.
+            val existingFeed = feedDao.queryById(feedId)
+            val feedCreated = existingFeed == null
+            if (feedCreated) {
+                feedDao.insertAll(listOf(feed))
+            }
 
             val entryRows = source.query(
                 """
@@ -564,16 +574,40 @@ class FeedBucketImporter internal constructor(
                 }
             }
             if (articles.isNotEmpty()) {
-                articleDao.insertList(articles)
-                importDao.insertIdentities(identities)
-                // E7/E24 — per-feed median recompute at the end of the
-                // per-feed apply, sampled from the imported rows (single
-                // implementation; samples are the stored rawDescription
-                // values of the articles just inserted).
-                feedDao.updateMedianBodyLength(
-                    feedId,
-                    MedianBodyLength.recompute(articles.map { it.rawDescription }),
+                // Review lane 3 defect 2: INSERT OR IGNORE instead of ABORT
+                // (OnConflictStrategy on insertListInternal) — pre-existing
+                // article ids (deterministic id collision) or same-batch
+                // duplicates (two entries sharing an external_id) no longer
+                // fail the whole chunk. Room reports -1 for ignored rows:
+                // ONLY actually-created articles keep createdByRunId = runId;
+                // ignored rows are identity-recorded with createdByRunId =
+                // null so removeImported() never deletes pre-existing
+                // non-run rows.
+                val rowIds = articleDao.insertListIgnoreConflict(articles)
+                importDao.insertIdentities(
+                    identities.mapIndexed { index, identity ->
+                        if (rowIds.getOrElse(index) { -1L } == -1L) {
+                            identity.copy(createdByRunId = null)
+                        } else {
+                            identity
+                        }
+                    },
                 )
+                // E7/E24 — per-feed median recompute at the end of the
+                // per-feed apply, sampled from the rows this chunk actually
+                // inserted (single implementation; samples are the stored
+                // rawDescription values). Ignored pre-existing rows keep
+                // the feed's current estimate untouched when nothing new
+                // lands.
+                val inserted = articles.filterIndexed { index, _ ->
+                    rowIds.getOrElse(index) { -1L } != -1L
+                }
+                if (inserted.isNotEmpty()) {
+                    feedDao.updateMedianBodyLength(
+                        feedId,
+                        MedianBodyLength.recompute(inserted.map { it.rawDescription }),
+                    )
+                }
             }
             importDao.insertIdentities(
                 listOf(
@@ -584,8 +618,8 @@ class FeedBucketImporter internal constructor(
                         targetId = feedId,
                         importRunId = runId,
                         importedAt = now,
-                        createdByRunId = runId,
-                        stateStamp = feedStamp(feed),
+                        createdByRunId = if (feedCreated) runId else null,
+                        stateStamp = feedStamp(existingFeed ?: feed),
                     ),
                 ),
             )

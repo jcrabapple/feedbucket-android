@@ -114,6 +114,15 @@ class MigrationImporterTest {
                         throw RuntimeException("injected crash on feed insert")
                     }
                 }
+                // Mirror Room's OnConflictStrategy.ABORT (the strategy
+                // declared on FeedDao.insertAll): an existing primary key
+                // raises SQLiteConstraintException and rolls the enclosing
+                // chunk transaction back (review lane 3 defect 2).
+                list.firstOrNull { feeds.containsKey(it.id) }?.let {
+                    throw RuntimeException(
+                        "mirrored SQLiteConstraintException: UNIQUE constraint failed: feed.id (${it.id})",
+                    )
+                }
                 list.forEach { feeds[it.id] = it }
                 Unit
             }
@@ -136,8 +145,36 @@ class MigrationImporterTest {
             }
 
             whenever(articleDao.insertList(any())).thenAnswer { invocation ->
-                invocation.getArgument<List<Article>>(0).forEach { articles[it.id] = it }
+                val list = invocation.getArgument<List<Article>>(0)
+                // Mirror Room's OnConflictStrategy.ABORT (insertListInternal):
+                // an existing primary key OR an intra-batch duplicate raises
+                // SQLiteConstraintException and rolls the chunk transaction
+                // back (nothing from the batch survives).
+                val seenInBatch = mutableSetOf<String>()
+                for (article in list) {
+                    if (articles.containsKey(article.id) || !seenInBatch.add(article.id)) {
+                        throw RuntimeException(
+                            "mirrored SQLiteConstraintException: UNIQUE constraint failed: article.id (${article.id})",
+                        )
+                    }
+                }
+                list.forEach { articles[it.id] = it }
                 Unit
+            }
+            whenever(articleDao.insertListIgnoreConflict(any())).thenAnswer { invocation ->
+                val list = invocation.getArgument<List<Article>>(0)
+                // Mirror INSERT OR IGNORE (insertListIgnoreConflictInternal):
+                // rowid per inserted row, -1 for every ignored row
+                // (pre-existing id OR earlier duplicate inside this batch).
+                var nextRowId = 100L
+                list.map { article ->
+                    if (articles.containsKey(article.id)) {
+                        -1L
+                    } else {
+                        articles[article.id] = article
+                        ++nextRowId
+                    }
+                }
             }
             whenever(articleDao.queryById(any())).thenAnswer { invocation ->
                 val id = invocation.getArgument<String>(0)
@@ -723,6 +760,152 @@ class MigrationImporterTest {
         assertTrue(feeds.containsKey(feed2Id))
         assertTrue(feeds.containsKey(feed3Id))
         assertEquals(0, identities.size)
+    }
+
+    @Test
+    fun applyOverPreExistingFeedAndArticlesSurvivesAndKeepsProvenance() = runBlocking {
+        // Review lane 3 defect 2 regression: the library already holds the
+        // alpha feed and its guid-a1 article under the SAME deterministic
+        // ids the import computes. The ABORT inserts used to throw
+        // SQLiteConstraintException and fail the whole chunk; now the
+        // pre-existing rows survive untouched, the chunk completes, and
+        // provenance marks ONLY run-created rows for removeImported().
+        val fixture = File(tmp.root, "fixture.db")
+        buildWebFixtureDb(fixture)
+
+        val alphaUrl = "https://alpha.example/feed.xml"
+        val alphaFeedId = expectedFeedId(alphaUrl)
+        feeds[alphaFeedId] = Feed(
+            id = alphaFeedId, name = "Alpha (library copy)", url = alphaUrl,
+            groupId = "1\$library-group", accountId = 1, tags = "existing",
+        )
+        val preExistingArticleId = expectedArticleId(alphaUrl, "guid-a1")
+        articles[preExistingArticleId] = Article(
+            id = preExistingArticleId, date = java.util.Date(now),
+            title = "Library copy of Alpha One",
+            rawDescription = "library body", shortDescription = "library body",
+            link = "https://alpha.example/one", feedId = alphaFeedId,
+            accountId = 1, stateVersion = 7,
+        )
+
+        val runId = stageFile(fixture)
+        val ledger = applyCompleted(runId, previewReady(runId).fingerprint)
+        assertEquals(0, ledger.failed)
+        assertEquals(3, ledger.imported)
+
+        // Pre-existing rows survive untouched (no REPLACE semantics).
+        assertEquals("Alpha (library copy)", feeds.getValue(alphaFeedId).name)
+        assertEquals("existing", feeds.getValue(alphaFeedId).tags)
+        assertEquals("Library copy of Alpha One", articles.getValue(preExistingArticleId).title)
+        assertEquals(7L, articles.getValue(preExistingArticleId).stateVersion)
+        // The rest of the fixture imported normally.
+        assertEquals(3, feeds.size)
+        assertEquals(7, articles.size)
+
+        // Provenance: pre-existing targets are recorded with
+        // createdByRunId = null; run-created rows carry the runId.
+        assertNull(
+            identities.single {
+                it.targetKind == ImportIdentity.TARGET_FEED && it.targetId == alphaFeedId
+            }.createdByRunId,
+        )
+        assertNull(
+            identities.single {
+                it.targetKind == ImportIdentity.TARGET_ARTICLE && it.targetId == preExistingArticleId
+            }.createdByRunId,
+        )
+        val betaFeedId = expectedFeedId("https://beta.example/rss")
+        assertEquals(
+            runId,
+            identities.single {
+                it.targetKind == ImportIdentity.TARGET_FEED && it.targetId == betaFeedId
+            }.createdByRunId,
+        )
+        assertEquals(
+            runId,
+            identities.single {
+                it.targetKind == ImportIdentity.TARGET_ARTICLE &&
+                    it.targetId == expectedArticleId(alphaUrl, "guid-a2")
+            }.createdByRunId,
+        )
+
+        // removeImported deletes ONLY run-created rows: the pre-existing
+        // feed and article stay; 6 run-created articles + 2 run-created
+        // feeds + 2 searches + 2 rules go.
+        val report = importer.removeImported(runId)
+        assertEquals(6 + 2 + 2 + 2, report.removed)
+        assertEquals(0, report.skippedEdited)
+        assertEquals(0, report.skippedProtected)
+        assertTrue(feeds.containsKey(alphaFeedId))
+        assertTrue(articles.containsKey(preExistingArticleId))
+        assertEquals(1, feeds.size)
+        assertEquals(1, articles.size)
+        assertEquals(0, identities.size)
+    }
+
+    @Test
+    fun sameBatchDuplicateArticleIdsImportWithoutChunkFailure() = runBlocking {
+        // Review lane 3 defect 2 regression, in-batch variant: two entries
+        // of ONE feed share an (empty) external_id => identical
+        // deterministic article ids inside the SAME insert batch. The
+        // ABORT strategy used to fail the whole chunk; INSERT OR IGNORE
+        // keeps the first row and ignores the rest.
+        val fixture = File(tmp.root, "dupes.db")
+        buildDuplicateExternalIdFixtureDb(fixture)
+        val runId = stageFile(fixture)
+        val ledger = applyCompleted(runId, previewReady(runId).fingerprint)
+        assertEquals(0, ledger.failed)
+        assertEquals(1, ledger.imported)
+
+        val alphaUrl = "https://alpha.example/feed.xml"
+        val dupeArticleId = expectedArticleId(alphaUrl, "")
+        assertEquals(1, articles.size)
+        // First entry wins; the duplicate is ignored, not replaced.
+        assertEquals("Alpha One", articles.getValue(dupeArticleId).title)
+        assertTrue(feeds.containsKey(expectedFeedId(alphaUrl)))
+
+        // Both entries get identity rows (distinct sourceIds); only the
+        // actually-inserted first one is attributed to this run.
+        val entryIdentities = identities.filter {
+            it.targetKind == ImportIdentity.TARGET_ARTICLE
+        }
+        assertEquals(2, entryIdentities.size)
+        assertEquals(1, entryIdentities.count { it.createdByRunId == runId })
+        assertEquals(1, entryIdentities.count { it.createdByRunId == null })
+    }
+
+    /**
+     * Web-schema fixture whose entries table drops the
+     * `UNIQUE(feed_id, external_id)` guard so two entries can share an
+     * (empty) external_id — the in-batch duplicate article-id case.
+     */
+    private fun buildDuplicateExternalIdFixtureDb(file: File) {
+        val conn = DriverManager.getConnection("jdbc:sqlite:${file.absolutePath}")
+        conn.use { c ->
+            c.createStatement().use { st ->
+                st.executeUpdate(
+                    FIXTURE_SCHEMA.replace(Regex(",\\s*UNIQUE\\(feed_id, external_id\\)"), ""),
+                )
+                st.executeUpdate(
+                    """
+                    INSERT INTO users VALUES (1, 'synthetic', 'pbkdf2:fake01${"ab".repeat(32)}',
+                        '2026-01-01T00:00:00+00:00', 'fake-starred-token');
+                    INSERT INTO user_prefs(user_id, sort) VALUES (1, 'DESC');
+                    INSERT INTO subscriptions VALUES
+                        (1, 'https://alpha.example/feed.xml', 'https://alpha.example',
+                         'Alpha Blog', 0, 1, NULL, NULL);
+                    INSERT INTO entries(id, feed_id, external_id, title, url, author, summary,
+                        content, original_content, extracted, published, created_at) VALUES
+                        (101, 1, '', 'Alpha One', 'https://alpha.example/one', '', 'Summary one',
+                         '<p>Body one</p>', NULL, 0,
+                         '2026-10-01T09:00:00+00:00', '2026-10-01T09:05:00+00:00'),
+                        (102, 1, '', 'Alpha Two', 'https://alpha.example/two', '', 'Summary two',
+                         '<p>Body two</p>', NULL, 0,
+                         '2026-10-02T09:00:00+00:00', '2026-10-02T09:05:00+00:00');
+                    """.trimIndent(),
+                )
+            }
+        }
     }
 
     @Test

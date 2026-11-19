@@ -54,11 +54,20 @@ constructor(
         val samples: List<PreviewSample>,
     )
 
-    /** S18a — total match count over the current scoped library. */
-    suspend fun previewCount(accountId: Int, feedIds: List<String>, query: String): Int =
+    /**
+     * S18a — total match count over the current scoped library.
+     * [allFeeds] skips the feed-id predicate entirely (review lane 3
+     * defect 3: never enumerate every feed id into bind parameters).
+     */
+    suspend fun previewCount(
+        accountId: Int,
+        feedIds: List<String>,
+        query: String,
+        allFeeds: Boolean = false,
+    ): Int =
         withContext(ioDispatcher) {
-            if (feedIds.isEmpty()) return@withContext 0
-            val built = RuleMatchSql.count(accountId, feedIds, parse(query))
+            if (!allFeeds && feedIds.isEmpty()) return@withContext 0
+            val built = RuleMatchSql.count(accountId, feedIds, parse(query), allFeeds)
             articleDao.queryRuleMatchCountRaw(SimpleSQLiteQuery(built.sql, built.args.toTypedArray()))
         }
 
@@ -68,10 +77,11 @@ constructor(
         feedIds: List<String>,
         query: String,
         limit: Int = PREVIEW_SAMPLE_LIMIT,
+        allFeeds: Boolean = false,
     ): List<PreviewSample> =
         withContext(ioDispatcher) {
-            if (feedIds.isEmpty()) return@withContext emptyList()
-            val built = RuleMatchSql.preview(accountId, feedIds, parse(query), limit)
+            if (!allFeeds && feedIds.isEmpty()) return@withContext emptyList()
+            val built = RuleMatchSql.preview(accountId, feedIds, parse(query), limit, allFeeds)
             articleDao
                 .queryRuleMatchPreviewRaw(SimpleSQLiteQuery(built.sql, built.args.toTypedArray()))
                 .map { PreviewSample(it.articleId, it.title, it.feedName.orEmpty(), it.date) }
@@ -88,11 +98,13 @@ constructor(
         feedIds: List<String>,
     ): Int =
         withContext(ioDispatcher) {
-            if (feedIds.isEmpty()) return@withContext 0
+            // allFeeds scopes by accountId alone (review lane 3 defect 3);
+            // an EMPTY explicit scope still matches nothing.
+            if (!rule.allFeeds && feedIds.isEmpty()) return@withContext 0
             val effects = rule.effects.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             val markRead = ActionRule.EFFECT_MARK_READ in effects
             val star = ActionRule.EFFECT_STAR in effects
-            val built = RuleMatchSql.states(accountId, feedIds, parse(rule.query))
+            val built = RuleMatchSql.states(accountId, feedIds, parse(rule.query), rule.allFeeds)
             val matched =
                 articleDao.queryArticleApplyStatesRaw(
                     SimpleSQLiteQuery(built.sql, built.args.toTypedArray())

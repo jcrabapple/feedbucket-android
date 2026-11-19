@@ -13,7 +13,13 @@ package me.ash.reader.domain.model.query
  */
 object SearchSql {
 
-    private const val LIKE_PATTERN = "LIKE '%' || ? || '%' ESCAPE '\\'"
+    /**
+     * Review lane 3 defect 4 cleanup: [likeTerm] ALREADY wraps the escaped
+     * term in `%…%`, so binding it through another `'%' || ? || '%'`
+     * concatenation produced a redundant `%%term%%` pattern. The parameter
+     * is now bound directly; ESCAPE '\' keeps `\`-escaped `%`/`_` literal.
+     */
+    private const val LIKE_PATTERN = "LIKE ? ESCAPE '\\'"
 
     data class Rendered(
         /** Empty string when there is nothing to render. */
@@ -23,14 +29,22 @@ object SearchSql {
     )
 
     /**
+     * LIKE-wildcard escaping ONLY (`\`, `%`, `_` -> `\\`, `\%`, `\_`), no
+     * `%…%` wrapping. Used by [likeTerm] and by tag containment, where the
+     * surrounding `%,`/`,%` wildcards are literal SQL and only the bound
+     * tag value must be escaped.
+     */
+    fun escapeLike(normalizedTerm: String): String =
+        normalizedTerm
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+
+    /**
      * Port of web `like_term` (db.py:167): escape `\`, `%`, `_`, then wrap
      * in `%…%`. Call with an ALREADY-normalized term.
      */
-    fun likeTerm(normalizedTerm: String): String =
-        "%" + normalizedTerm
-            .replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_") + "%"
+    fun likeTerm(normalizedTerm: String): String = "%" + escapeLike(normalizedTerm) + "%"
 
     private fun qualify(alias: String?, column: String) = if (alias == null) column else "$alias.$column"
 
@@ -59,13 +73,17 @@ object SearchSql {
      * lowercase: tags are stored lowercased (S4). [articleAlias] qualifies
      * the article table reference (required when the query aliases the
      * article table, e.g. `article AS a`).
+     *
+     * Review lane 3 defect 4: the normalized tag is LIKE-escaped and the
+     * clause declares `ESCAPE '\'`, so `_`/`%` inside tag names (e.g.
+     * `foo_bar`, `100%`) match literally instead of acting as wildcards.
      */
     fun renderTag(query: SearchQuery, articleAlias: String = "article"): Rendered {
         val tag = query.tag ?: return Rendered("", emptyList())
         return Rendered(
             sql = "EXISTS (SELECT 1 FROM feed f2 WHERE f2.id = $articleAlias.feedId " +
-                "AND (',' || f2.tags || ',' LIKE '%,' || ? || ',%'))",
-            params = listOf(TextNormalizer.normalize(tag)),
+                "AND (',' || f2.tags || ',' LIKE '%,' || ? || ',%' ESCAPE '\\'))",
+            params = listOf(escapeLike(TextNormalizer.normalize(tag))),
         )
     }
 

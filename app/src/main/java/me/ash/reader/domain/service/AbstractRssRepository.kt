@@ -285,17 +285,20 @@ abstract class AbstractRssRepository(
     /** S18a preview: total match count + first 20 samples. */
     suspend fun previewRule(rule: ActionRule): StateApplyLedger.Preview {
         val accountId = accountService.getCurrentAccountId()
-        val scope = resolveRuleScope(rule).toList()
+        // Review lane 3 defect 3: allFeeds scopes by accountId inside
+        // RuleMatchSql — never enumerate every feed id into the SQL.
+        val scope = if (rule.allFeeds) emptyList() else resolveRuleScope(rule).toList()
         return StateApplyLedger.Preview(
-            count = stateApplyLedger.previewCount(accountId, scope, rule.query),
-            samples = stateApplyLedger.previewSamples(accountId, scope, rule.query),
+            count = stateApplyLedger.previewCount(accountId, scope, rule.query, rule.allFeeds),
+            samples = stateApplyLedger.previewSamples(accountId, scope, rule.query, allFeeds = rule.allFeeds),
         )
     }
 
     /** S18a apply-to-existing: one tx (ledger + effects) → exact count. */
     suspend fun applyRuleToExisting(rule: ActionRule): Int {
         val accountId = accountService.getCurrentAccountId()
-        return stateApplyLedger.applyToExisting(accountId, rule, resolveRuleScope(rule).toList())
+        val scope = if (rule.allFeeds) emptyList() else resolveRuleScope(rule).toList()
+        return stateApplyLedger.applyToExisting(accountId, rule, scope)
     }
 
     /** S18a undo of the most recent completed, not-yet-undone apply run. */

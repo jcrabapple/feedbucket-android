@@ -262,7 +262,10 @@ class OPMLDataSourceTest {
             accountService = accountService,
             rssService = rssService,
             OPMLDataSource = opmlDataSource,
-            ioDispatcher = mockIODispatcher,
+            // saveToString now runs under withContext(ioDispatcher) (review
+            // lane 3 defect 5) — a bare mocked CoroutineDispatcher cannot
+            // dispatch; use a real one like the import test above.
+            ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         val exported = runBlocking { service.saveToString(accountId, attachInfo = false) }
 

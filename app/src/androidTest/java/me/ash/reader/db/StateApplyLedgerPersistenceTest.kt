@@ -2,6 +2,7 @@ package me.ash.reader.db
 
 import android.content.Context
 import androidx.room.Room
+import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.Date
@@ -10,6 +11,8 @@ import kotlinx.coroutines.runBlocking
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.model.group.Group
+import me.ash.reader.domain.model.query.RuleMatchSql
+import me.ash.reader.domain.model.query.SearchQuery
 import me.ash.reader.domain.model.rule.ActionRule
 import me.ash.reader.domain.service.StateApplyLedger
 import me.ash.reader.infrastructure.db.AndroidDatabase
@@ -179,6 +182,49 @@ class StateApplyLedgerPersistenceTest {
             assertTrue(it.isStarred) // undo never clears the pre-existing star
             assertEquals(5L, it.stateVersion)
         }
+    }
+
+    @Test
+    fun explicitScopeInlinedLiteralsAndTagEscapeRunOnRealSqlite() = runBlocking {
+        // Review lane 3 defect 3: a >999-id explicit scope renders as OR-ed
+        // quoted-literal IN chunks (<=500) — ZERO scope bind variables — and
+        // must execute on real SQLite (SQLITE_MAX_VARIABLE_NUMBER is 999 on
+        // API 26-29, bounded per STATEMENT, so chunked binds would not help).
+        val manyIds = (0 until 1200).map { "1\$missing$it" } + feed.id
+        val countBuilt = RuleMatchSql.count(1, manyIds, SearchQuery.parse("foo"))
+        assertTrue(countBuilt.args.size < 999)
+        assertEquals(
+            2, // a1 "foo one" + a2 "foo two"; x1 "other" does not match
+            db.articleDao().queryRuleMatchCountRaw(
+                SimpleSQLiteQuery(countBuilt.sql, countBuilt.args.toTypedArray()),
+            ),
+        )
+        val statesBuilt = RuleMatchSql.states(1, manyIds, SearchQuery.parse("foo"))
+        assertEquals(
+            2,
+            db.articleDao()
+                .queryArticleApplyStatesRaw(
+                    SimpleSQLiteQuery(statesBuilt.sql, statesBuilt.args.toTypedArray()),
+                )
+                .size,
+        )
+        // Review lane 3 defect 4 at the SQLite level: the tag clause ESCAPEs
+        // `_`, so `te_h` must not wildcard-match the feed's `tech` tag,
+        // while the literal tag still matches all 3 articles of the feed.
+        val wildBuilt = RuleMatchSql.count(1, listOf(feed.id), SearchQuery.parse("tag:te_h"))
+        assertEquals(
+            0,
+            db.articleDao().queryRuleMatchCountRaw(
+                SimpleSQLiteQuery(wildBuilt.sql, wildBuilt.args.toTypedArray()),
+            ),
+        )
+        val tagBuilt = RuleMatchSql.count(1, listOf(feed.id), SearchQuery.parse("tag:tech"))
+        assertEquals(
+            3,
+            db.articleDao().queryRuleMatchCountRaw(
+                SimpleSQLiteQuery(tagBuilt.sql, tagBuilt.args.toTypedArray()),
+            ),
+        )
     }
 
     companion object {

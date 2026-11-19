@@ -8,10 +8,16 @@ import org.junit.Test
  */
 class SearchSqlTest {
 
-    private val TERM_SQL = "(titleLower LIKE '%' || ? || '%' ESCAPE '\\' OR " +
-        "shortLower LIKE '%' || ? || '%' ESCAPE '\\' OR " +
-        "rawLower LIKE '%' || ? || '%' ESCAPE '\\' OR " +
-        "fullLower LIKE '%' || ? || '%' ESCAPE '\\')"
+    // Review lane 3 defect 4 cleanup: likeTerm() already wraps `%…%`, so the
+    // column clause binds the pattern directly (no `'%' || ? || '%'`
+    // re-wrapping into `%%term%%`).
+    private val TERM_SQL = "(titleLower LIKE ? ESCAPE '\\' OR " +
+        "shortLower LIKE ? ESCAPE '\\' OR " +
+        "rawLower LIKE ? ESCAPE '\\' OR " +
+        "fullLower LIKE ? ESCAPE '\\')"
+
+    private val TAG_SQL = "EXISTS (SELECT 1 FROM feed f2 WHERE f2.id = article.feedId " +
+        "AND (',' || f2.tags || ',' LIKE '%,' || ? || ',%' ESCAPE '\\'))"
 
     @Test
     fun likeTermEscapesAfterNormalization() {
@@ -19,6 +25,15 @@ class SearchSqlTest {
         assertEquals("%50\\%\\_off\\\\%", SearchSql.likeTerm("50%_off\\"))
         // normalization happens before escaping (S11a)
         assertEquals("%feedbucket%", SearchSql.likeTerm(TextNormalizer.normalize("FeedBucket")))
+    }
+
+    @Test
+    fun escapeLikeEscapesWithoutWrapping() {
+        // Review lane 3 defect 4: tag containment escapes WITHOUT the %…% wrap.
+        assertEquals("foo", SearchSql.escapeLike("foo"))
+        assertEquals("foo\\_bar", SearchSql.escapeLike("foo_bar"))
+        assertEquals("100\\%", SearchSql.escapeLike("100%"))
+        assertEquals("50\\%\\_off\\\\", SearchSql.escapeLike("50%_off\\"))
     }
 
     @Test
@@ -48,20 +63,44 @@ class SearchSqlTest {
     @Test
     fun tagRendersCsvContainmentNormalized() {
         val rendered = SearchSql.renderTag(SearchQuery.parse("tag:Tech"))
-        assertEquals(
-            "EXISTS (SELECT 1 FROM feed f2 WHERE f2.id = article.feedId " +
-                "AND (',' || f2.tags || ',' LIKE '%,' || ? || ',%'))",
-            rendered.sql,
-        )
+        assertEquals(TAG_SQL, rendered.sql)
         assertEquals(listOf("tech"), rendered.params)
+    }
+
+    @Test
+    fun tagEscapesLikeWildcardsLiterally() {
+        // Review lane 3 defect 4: `_` and `%` inside tag names must bind as
+        // ESCAPE '\' literals, never as LIKE wildcards (`foo_bar` must not
+        // match `fooXbar`, `100%` must not match `1000`).
+        assertEquals(
+            listOf("foo\\_bar"),
+            SearchSql.renderTag(SearchQuery.parse("tag:foo_bar")).params,
+        )
+        assertEquals(
+            listOf("100\\%"),
+            SearchSql.renderTag(SearchQuery.parse("tag:100%")).params,
+        )
+        // SearchQuery.parse consumes `\` as a token escape, so the raw
+        // backslash case is constructed directly at the renderer level.
+        assertEquals(
+            listOf("back\\\\slash"),
+            SearchSql.renderTag(
+                SearchQuery(
+                    terms = emptyList(),
+                    tag = "back\\slash",
+                    sort = SearchQuery.Sort.DESC,
+                ),
+            ).params,
+        )
+        // The clause itself declares the escape character.
+        val rendered = SearchSql.renderTag(SearchQuery.parse("tag:foo_bar"))
+        assertEquals(TAG_SQL, rendered.sql)
     }
 
     @Test
     fun whereCombinesTermsThenTag() {
         val rendered = SearchSql.renderWhere(SearchQuery.parse("tag:tech foo"))
-        assertEquals("$TERM_SQL AND " +
-            "EXISTS (SELECT 1 FROM feed f2 WHERE f2.id = article.feedId " +
-            "AND (',' || f2.tags || ',' LIKE '%,' || ? || ',%'))", rendered.sql)
+        assertEquals("$TERM_SQL AND $TAG_SQL", rendered.sql)
         assertEquals(
             listOf("%foo%", "%foo%", "%foo%", "%foo%", "tech"),
             rendered.params,
@@ -72,10 +111,10 @@ class SearchSqlTest {
     fun relevanceScorePerTermWeights() {
         val rendered = SearchSql.renderRelevanceScore(SearchQuery.parse("foo"))
         assertEquals(
-            "( CASE WHEN titleLower LIKE '%' || ? || '%' ESCAPE '\\' THEN 5 ELSE 0 END + " +
-                "CASE WHEN shortLower LIKE '%' || ? || '%' ESCAPE '\\' THEN 2 ELSE 0 END + " +
-                "CASE WHEN rawLower LIKE '%' || ? || '%' ESCAPE '\\' OR " +
-                "fullLower LIKE '%' || ? || '%' ESCAPE '\\' THEN 1 ELSE 0 END )",
+            "( CASE WHEN titleLower LIKE ? ESCAPE '\\' THEN 5 ELSE 0 END + " +
+                "CASE WHEN shortLower LIKE ? ESCAPE '\\' THEN 2 ELSE 0 END + " +
+                "CASE WHEN rawLower LIKE ? ESCAPE '\\' OR " +
+                "fullLower LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END )",
             rendered.sql,
         )
         assertEquals(listOf("%foo%", "%foo%", "%foo%", "%foo%"), rendered.params)
@@ -86,6 +125,7 @@ class SearchSqlTest {
         assertEquals("date ASC, rowid ASC", SearchSql.renderOrderBy(SearchQuery.Sort.ASC))
         assertEquals("date DESC, rowid DESC", SearchSql.renderOrderBy(SearchQuery.Sort.DESC))
         assertEquals("score DESC, date DESC, rowid DESC", SearchSql.renderOrderBy(SearchQuery.Sort.RELEVANCE))
+        assertEquals("a.date ASC, rowid ASC", SearchSql.renderOrderBy(SearchQuery.Sort.ASC, dateColumn = "a.date"))
         assertEquals("a.date DESC, rowid DESC", SearchSql.renderOrderBy(SearchQuery.Sort.DESC, dateColumn = "a.date"))
     }
 
