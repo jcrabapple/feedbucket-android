@@ -8,6 +8,7 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.article.Article
@@ -21,8 +22,13 @@ import me.ash.reader.domain.model.download.DownloadStore
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.DownloadDao
 import me.ash.reader.infrastructure.di.DownloadHttpClient
+import me.ash.reader.infrastructure.net.RedirectWalker
+import me.ash.reader.infrastructure.net.SsrfGuard
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import okio.Buffer
+import okio.BufferedSource
 import timber.log.Timber
 
 /**
@@ -43,6 +49,7 @@ constructor(
     private val downloadStore: DownloadStore,
     private val workManager: WorkManager,
     @DownloadHttpClient private val http: OkHttpClient,
+    private val ssrfGuard: SsrfGuard,
 ) {
 
     /** Thrown on any attempt-level failure; [errorCause] feeds the retry rule. */
@@ -191,11 +198,13 @@ constructor(
             candidates - landed.assets.map { it.url }.toSet()
         } ?: candidates) {
             val manifest = currentManifest(accountId, articleId) ?: return
-            if (!DownloadPolicy.imageFits(
-                    imageBytes = Long.MAX_VALUE, // budget check against content length below
-                    bytesSoFar = manifest.assets.sumOf { it.bytes },
-                    countSoFar = manifest.assets.size,
-                )
+            // Budget pre-check ONLY: stop fetching once the article's image
+            // count/byte budget is exhausted. Per-image size is enforced in
+            // fetchOneAsset against the ACTUAL downloaded bytes — the old
+            // `imageFits(imageBytes = Long.MAX_VALUE)` sentinel here failed
+            // unconditionally, so no image was ever fetched (dead code).
+            if (manifest.assets.size >= DownloadPolicy.IMAGES_MAX_COUNT ||
+                manifest.assets.sumOf { it.bytes } >= DownloadPolicy.IMAGES_MAX_BYTES
             ) {
                 continue // cap-exceeded assets are terminally skipped
             }
@@ -203,6 +212,7 @@ constructor(
                 .onFailure { throwable ->
                     when (throwable) {
                         is AssetSkipped -> Unit // terminal per-asset skip
+                        is CancellationException -> throw throwable
                         else -> throw (throwable as? AttemptFailed) ?: AttemptFailed(DownloadErrorCause.NETWORK)
                     }
                 }
@@ -210,55 +220,110 @@ constructor(
         finalizeAssets(accountId, articleId)
     }
 
-    /** Sealed per-asset terminal skip (HTTP error / cap / challenge). */
+    /** Sealed per-asset terminal skip (HTTP error / cap / challenge / SSRF). */
     private class AssetSkipped : Exception()
 
     private fun currentManifest(accountId: Int, articleId: String): DownloadManifest? =
         downloadStore.readManifest(downloadStore.articleDir(accountId, articleId))
 
+    /**
+     * Fetches ONE asset under the E17 [SsrfGuard] (the start URL AND every
+     * redirect hop — `@DownloadHttpClient` does not follow redirects itself,
+     * hops are walked by [RedirectWalker] exactly like the extract fetch) and
+     * the S28 streaming byte cap `min(per-image, remaining article budget)`:
+     * a hostile multi-GB body is aborted mid-stream and never lands in
+     * memory. Guard rejects, exhausted redirect budgets, non-2xx, oversize
+     * bodies and challenge pages are TERMINAL per-asset skips; an IOException
+     * fails the whole attempt (S28a retry via the caller).
+     */
     private suspend fun fetchOneAsset(accountId: Int, articleId: String, url: String) {
         val dir = downloadStore.articleDir(accountId, articleId)
-        val request = Request.Builder().url(url).build()
-        val response = try {
-            http.newCall(request).execute()
+        val budget = currentManifest(accountId, articleId)
+            ?: throw AttemptFailed(DownloadErrorCause.STORAGE)
+        val maxBytes = minOf(
+            DownloadPolicy.PER_IMAGE_MAX_BYTES,
+            DownloadPolicy.IMAGES_MAX_BYTES - budget.assets.sumOf { it.bytes },
+        )
+
+        val responses = LinkedHashMap<String, Response>()
+        val bytes: ByteArray
+        try {
+            val walker = RedirectWalker(
+                guard = { candidate -> ssrfGuard.check(candidate) },
+                transport = { current ->
+                    val response = responses.getOrPut(current) {
+                        http.newCall(Request.Builder().url(current).build()).execute()
+                    }
+                    if (response.code in REDIRECT_CODES) response.header("Location") else null
+                },
+            )
+            val finalUrl = when (val walked = walker.walk(url)) {
+                is RedirectWalker.WalkOutcome.Succeeded -> walked.finalUrl
+                // SSRF-rejected hop or runaway redirect chain: terminal skip.
+                is RedirectWalker.WalkOutcome.Rejected -> throw AssetSkipped()
+                is RedirectWalker.WalkOutcome.TooManyHops -> throw AssetSkipped()
+            }
+            val resp = responses.getValue(finalUrl)
+            if (!resp.isSuccessful) throw AssetSkipped()
+            // Streaming cap: abort the moment the body exceeds the budget.
+            bytes = readAtMost(resp.body.source(), maxBytes) ?: throw AssetSkipped()
         } catch (e: IOException) {
             throw AttemptFailed(DownloadErrorCause.NETWORK)
+        } finally {
+            responses.values.forEach { runCatching { it.close() } }
         }
-        response.use { resp ->
-            if (!resp.isSuccessful) throw AssetSkipped()
-            val bytes = resp.body?.bytes() ?: throw AssetSkipped()
-            if (bytes.isNotEmpty() &&
-                DownloadHtmlSanitizer.isChallenge(String(bytes, Charsets.UTF_8))
-            ) {
-                throw AssetSkipped()
-            }
-            val manifest = currentManifest(accountId, articleId) ?: throw AttemptFailed(DownloadErrorCause.STORAGE)
-            if (!DownloadPolicy.imageFits(
-                    imageBytes = bytes.size.toLong(),
-                    bytesSoFar = manifest.assets.sumOf { it.bytes },
-                    countSoFar = manifest.assets.size,
-                )
-            ) {
-                throw AssetSkipped() // over per-image/bytes/count caps: terminal skip
-            }
-            val fileName = DownloadHtmlSanitizer.assetFileName(url)
-            val assetFile = java.io.File(dir, "assets/$fileName")
-            assetFile.parentFile?.mkdirs()
-            assetFile.writeBytes(bytes)
-            val sha256 =
-                MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
-                    "%02x".format(it)
-                }
-            val updated =
-                manifest.copy(
-                    assets = manifest.assets + DownloadManifest.Asset(url, "assets/$fileName", bytes.size.toLong(), sha256),
-                )
-            downloadStore.writeManifestAtomic(dir, updated)
-            downloadDao.upsertAssets(
-                listOf(DownloadAsset(articleId = articleId, url = url, localPath = "assets/$fileName", bytes = bytes.size.toLong(), sha256 = sha256))
+        // Challenge sniff on the first ~1 KiB only — the body may be binary,
+        // decoding all of it to UTF-8 just to sniff markers is wasted work.
+        if (bytes.isNotEmpty() &&
+            DownloadHtmlSanitizer.isChallenge(
+                String(bytes, 0, minOf(bytes.size, CHALLENGE_SNIFF_BYTES), Charsets.UTF_8)
             )
-            downloadDao.bumpImageProgress(articleId, bytes.size.toLong(), assetsComplete = false)
+        ) {
+            throw AssetSkipped()
         }
+        val manifest = currentManifest(accountId, articleId) ?: throw AttemptFailed(DownloadErrorCause.STORAGE)
+        if (!DownloadPolicy.imageFits(
+                imageBytes = bytes.size.toLong(),
+                bytesSoFar = manifest.assets.sumOf { it.bytes },
+                countSoFar = manifest.assets.size,
+            )
+        ) {
+            throw AssetSkipped() // over per-image/bytes/count caps: terminal skip
+        }
+        val fileName = DownloadHtmlSanitizer.assetFileName(url)
+        val assetFile = java.io.File(dir, "assets/$fileName")
+        assetFile.parentFile?.mkdirs()
+        assetFile.writeBytes(bytes)
+        val sha256 =
+            MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+                "%02x".format(it)
+            }
+        val updated =
+            manifest.copy(
+                assets = manifest.assets + DownloadManifest.Asset(url, "assets/$fileName", bytes.size.toLong(), sha256),
+            )
+        downloadStore.writeManifestAtomic(dir, updated)
+        downloadDao.upsertAssets(
+            listOf(DownloadAsset(articleId = articleId, url = url, localPath = "assets/$fileName", bytes = bytes.size.toLong(), sha256 = sha256))
+        )
+        downloadDao.bumpImageProgress(articleId, bytes.size.toLong(), assetsComplete = false)
+    }
+
+    /**
+     * S28 streaming cap (mirrors `ExtractFetch.readAtMost`): reads in fixed
+     * chunks and stops the moment the total EXCEEDS [maxBytes] (a body of
+     * exactly maxBytes is allowed). Returns null when the cap was exceeded —
+     * the caller closes the response in [fetchOneAsset]'s finally block.
+     */
+    private fun readAtMost(source: BufferedSource, maxBytes: Long): ByteArray? {
+        val buffer = Buffer()
+        var total = 0L
+        while (total <= maxBytes) {
+            val read = source.read(buffer, READ_CHUNK_BYTES)
+            if (read == -1L) return buffer.readByteArray()
+            total += read
+        }
+        return null
     }
 
     /** All expected assets resolved (landed or terminally skipped). */
@@ -291,7 +356,11 @@ constructor(
             downloadStore.articleDir(article.accountId, articleId),
             manifest.copy(assetsComplete = false),
         )
-        runCatching { fetchAssets(article.accountId, article, candidates) }
+        // AttemptFailed PROPAGATES: the STATE_READY re-entry in
+        // download(articleId) runs under DownloadWorker, whose S28a retry
+        // rule must see transient image-phase network failures instead of
+        // them being silently swallowed. UI callers guard themselves.
+        fetchAssets(article.accountId, article, candidates)
     }
 
     /** Chained/bulk worker entry: drains up to [DownloadPolicy.BULK_MAX_ARTICLES] pending rows. */
@@ -304,18 +373,50 @@ constructor(
                 // Batch path: no WorkManager retry for the batch itself; the
                 // row-level attempt counter provides the same max-3 bound and
                 // the next sync chain re-drains surviving pending rows.
-                val current = downloadDao.queryByArticleId(row.articleId)
+                val current = downloadDao.queryByArticleId(row.articleId) ?: continue
                 if (e.errorCause == DownloadErrorCause.STORAGE ||
                     e.errorCause == DownloadErrorCause.OVERSIZE ||
-                    (current != null && current.attempts >= DownloadPolicy.MAX_AUTO_ATTEMPTS)
+                    current.attempts >= DownloadPolicy.MAX_AUTO_ATTEMPTS
                 ) {
                     markFailed(row.articleId, e.errorCause)
+                } else if (current.state == ArticleDownload.STATE_DOWNLOADING) {
+                    // Non-terminal: put the row BACK to pending (attempts
+                    // PRESERVED — updateState never touches the counter) so
+                    // the next batch drain re-picks it instead of stranding
+                    // it in `downloading` until app restart.
+                    downloadDao.updateState(
+                        articleId = row.articleId,
+                        state = ArticleDownload.STATE_PENDING,
+                        errorCause = e.errorCause.value,
+                        lastAttemptAt = System.currentTimeMillis(),
+                        completedAt = null,
+                    )
                 }
+                // A row that raced to READY keeps its committed text: an
+                // image-phase failure leaves it honestly text-only.
             }
         }
     }
 
+    /**
+     * Attempt-failure write. NEVER demotes a committed READY row (D6/state
+     * machine: `ready -> failed` is not an attempt outcome — the text is
+     * durably committed and an image-phase failure leaves it text-only).
+     * The corrupt-dir demotion in [reconcile] is the ONE deliberate
+     * ready->failed writer and goes through [writeFailed] directly.
+     */
     suspend fun markFailed(articleId: String, cause: DownloadErrorCause) {
+        val current = downloadDao.queryByArticleId(articleId)
+        if (current?.state == ArticleDownload.STATE_READY) {
+            Timber.w(
+                "download $articleId: attempt failed (${cause.value}) but text is committed; staying ready (text-only)"
+            )
+            return
+        }
+        writeFailed(articleId, cause)
+    }
+
+    private suspend fun writeFailed(articleId: String, cause: DownloadErrorCause) {
         downloadDao.updateState(
             articleId = articleId,
             state = ArticleDownload.STATE_FAILED,
@@ -347,9 +448,13 @@ constructor(
      */
     suspend fun deleteFilesFor(articleIds: List<String>) {
         if (articleIds.isEmpty()) return
-        val withDownloads = downloadDao.queryByArticleIds(articleIds)
-        for (row in withDownloads) deleteFilesFor(row)
-        downloadDao.queryByArticleIds(articleIds).forEach { downloadDao.deleteAssetsByArticleId(it.articleId) }
+        // SQLite binds at most 999 host parameters (API 26-29): chunk the IN
+        // query so >999-article feed/account deletes never hit the limit.
+        for (chunk in articleIds.chunked(QUERY_CHUNK_SIZE)) {
+            val withDownloads = downloadDao.queryByArticleIds(chunk)
+            for (row in withDownloads) deleteFilesFor(row)
+            withDownloads.forEach { downloadDao.deleteAssetsByArticleId(it.articleId) }
+        }
     }
 
     private fun deleteFilesFor(row: ArticleDownload) {
@@ -414,8 +519,24 @@ constructor(
             val accountId = row.articleId.substringBefore('$').toIntOrNull() ?: continue
             if (!downloadStore.exists(accountId, row.articleId)) {
                 Timber.w("download ${row.articleId}: committed dir missing/invalid; demoting to failed(storage)")
-                markFailed(row.articleId, DownloadErrorCause.STORAGE)
+                // Deliberate ready->failed demotion (corrupt dir is never
+                // rendered): bypasses the READY guard in markFailed.
+                writeFailed(row.articleId, DownloadErrorCause.STORAGE)
             }
         }
+    }
+
+    private companion object {
+        /** Response body is pulled in fixed chunks under the streaming cap. */
+        const val READ_CHUNK_BYTES = 8_192L
+
+        /** Challenge markers are sniffed from the first ~1 KiB only. */
+        const val CHALLENGE_SNIFF_BYTES = 1_024
+
+        /** Same redirect-code convention as the extract fetch walker. */
+        val REDIRECT_CODES = 300..399
+
+        /** SQLite host-parameter limit is 999 (API 26-29); 500 stays clear. */
+        const val QUERY_CHUNK_SIZE = 500
     }
 }

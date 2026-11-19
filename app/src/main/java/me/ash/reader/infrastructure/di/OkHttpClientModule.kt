@@ -90,7 +90,10 @@ object OkHttpClientModule {
     /**
      * S28 — dedicated download client with the exact download timeouts
      * (connect 15 s, read 30 s, call 120 s). No HTTP cache: downloaded bytes
-     * belong to the durable store, not the evictable cache.
+     * belong to the durable store, not the evictable cache. Redirects are
+     * NOT followed automatically: DownloadService walks image-asset hops
+     * manually under the E17 SsrfGuard (parity with the extract client), so
+     * a redirect into a loopback/LAN range is rejected instead of fetched.
      */
     @Provides
     @Singleton
@@ -105,6 +108,8 @@ object OkHttpClientModule {
             readTimeoutSecs = DownloadPolicy.READ_TIMEOUT_SECS,
         ).newBuilder()
             .callTimeout(DownloadPolicy.CALL_TIMEOUT_SECS, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
             .addNetworkInterceptor(UserAgentInterceptor)
             .build()
 

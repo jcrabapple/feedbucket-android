@@ -130,6 +130,9 @@ class DownloadPolicyTest {
         // manual retry: failed -> pending (resets attempts); pending may also
         // be re-attempted straight away
         assertTrue(DownloadPolicy.isLegalTransition("failed", "pending"))
+        // batch requeue: a non-terminal bulk failure resets downloading ->
+        // pending with attempts PRESERVED
+        assertTrue(DownloadPolicy.isLegalTransition("downloading", "pending"))
         // terminal-ish guards
         assertFalse(DownloadPolicy.isLegalTransition("ready", "downloading"))
         assertFalse(DownloadPolicy.isLegalTransition("ready", "pending"))

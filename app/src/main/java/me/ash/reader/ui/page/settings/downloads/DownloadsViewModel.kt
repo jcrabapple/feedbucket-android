@@ -7,6 +7,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
@@ -27,6 +29,7 @@ import me.ash.reader.domain.service.AccountService
 import me.ash.reader.domain.service.DownloadService
 import me.ash.reader.domain.service.DownloadWorker
 import me.ash.reader.infrastructure.di.IODispatcher
+import timber.log.Timber
 
 /**
  * S16/S28/S29 — Downloads settings surface: account-scoped store usage,
@@ -93,6 +96,8 @@ constructor(
                     delay(5_000)
                 }
             }
+            // The store walk touches the filesystem: keep it off Main.
+            .flowOn(ioDispatcher)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val globalStatus: StateFlow<DownloadPolicy.GlobalStatus> =
@@ -109,7 +114,18 @@ constructor(
 
     /** S27a — "Retry images": re-open the missing asset set on a ready row. */
     fun retryImages(articleId: String) {
-        viewModelScope.launch(ioDispatcher) { downloadService.resumeAssets(articleId) }
+        viewModelScope.launch(ioDispatcher) {
+            // resumeAssets rethrows AttemptFailed so the DownloadWorker
+            // re-entry can retry; a manual tap must not crash — log and leave
+            // the row text-only ready (honest state, retryable again).
+            try {
+                downloadService.resumeAssets(articleId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RuntimeException) {
+                Timber.w(e, "retry images failed for $articleId")
+            }
+        }
     }
 
     fun removeAll() {

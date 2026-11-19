@@ -92,7 +92,14 @@ object DownloadPolicy {
             ArticleDownload.STATE_PENDING to
                 setOf(ArticleDownload.STATE_DOWNLOADING),
             ArticleDownload.STATE_DOWNLOADING to
-                setOf(ArticleDownload.STATE_READY, ArticleDownload.STATE_FAILED),
+                setOf(
+                    ArticleDownload.STATE_READY,
+                    ArticleDownload.STATE_FAILED,
+                    // batch requeue: a non-terminal bulk failure resets the
+                    // row to pending with attempts PRESERVED (the row-level
+                    // max-3 bound still applies)
+                    ArticleDownload.STATE_PENDING,
+                ),
             // manual retry: failed -> pending, resetting the attempt counter
             ArticleDownload.STATE_FAILED to
                 setOf(ArticleDownload.STATE_PENDING),

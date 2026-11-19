@@ -38,6 +38,15 @@ object CacheHolderModule {
     }
 
     /**
+     * E17 SSRF guard — ONE shared stateless instance for the extract
+     * pipeline AND the offline download asset fetcher (image URLs from RSS
+     * content are untrusted input exactly like extraction targets).
+     */
+    @Provides
+    @Singleton
+    fun provideSsrfGuard(): SsrfGuard = SsrfGuard()
+
+    /**
      * E2 (SPEC-EXTRACT-v1) — the ONE extraction pipeline. Fetch runs on the
      * E18 `@ExtractHttpClient` (no cache, 15/30/60 s, manual redirects) with
      * the E17 `SsrfGuard` on every hop; storage is the E4 `applyExtraction`
@@ -52,10 +61,11 @@ object CacheHolderModule {
         @ExtractHttpClient extractHttpClient: OkHttpClient,
         articleDao: ArticleDao,
         @IODispatcher ioDispatcher: CoroutineDispatcher,
+        ssrfGuard: SsrfGuard,
     ): ExtractCoordinator = ExtractCoordinator(
         fetch = ExtractFetch(
             transport = ExtractFetch.OkHttpTransport(extractHttpClient),
-            ssrfGuard = SsrfGuard(),
+            ssrfGuard = ssrfGuard,
             ioDispatcher = ioDispatcher,
         ),
         articleDao = articleDao,
