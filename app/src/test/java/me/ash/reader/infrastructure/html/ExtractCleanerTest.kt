@@ -103,6 +103,58 @@ class ExtractCleanerTest {
         assertTrue(out.contains("Just prose, no headings at all."))
     }
 
+    // ---- Rule 1, non-ASCII (mirrors ExtractCleanerInstrumentedTest: the
+    // JVM and Android ICU must normalize these fixtures IDENTICALLY — the
+    // 0.1.3 `(?U)` crash shipped because only the JVM ran the cleaner) ----
+
+    @Test
+    fun nonAsciiTitleDedupeSameAsAndroid() {
+        // "café müller schreibt" (20) vs "café müller schreibt sitename"
+        // (29): 20 >= 0.6 × 29 = 17.4 ✓ → dropped. With ASCII-only `\w`
+        // the é/ü would be punctuated to spaces and the ratio flips — this
+        // pins the Unicode-class intent of the old `(?U)\w` on the JVM.
+        val accent = ExtractCleaner.clean(
+            "<h1>Café Müller schreibt — SiteName</h1><p>Accented prose.</p>",
+            title = "Café Müller schreibt",
+        )
+        assertFalse(accent.contains("<h1"))
+        assertTrue(accent.contains("Accented prose."))
+
+        // "статья о вычислениях" (20) vs "статья о вычислениях сайт" (25):
+        // 20 >= 15 ✓ → dropped.
+        val cyrillic = ExtractCleaner.clean(
+            "<h1>Статья о вычислениях — Сайт</h1><p>Cyrillic prose.</p>",
+            title = "Статья о вычислениях",
+        )
+        assertFalse(cyrillic.contains("<h1"))
+        assertTrue(cyrillic.contains("Cyrillic prose."))
+
+        // CJK: brackets 「」 (Ps/Pe) → spaces; 13 vs 18: 13 >= 10.8 ✓.
+        val cjk = ExtractCleaner.clean(
+            "<h1>「東京物語の全文掲載について」— Site</h1><p>CJK prose.</p>",
+            title = "東京物語の全文掲載について",
+        )
+        assertFalse(cjk.contains("<h1"))
+        assertTrue(cjk.contains("CJK prose."))
+
+        // A non-matching non-ASCII heading is KEPT.
+        val kept = ExtractCleaner.clean(
+            "<h1>Completamente differente</h1><p>x</p>",
+            title = "Unrelated title",
+        )
+        assertTrue(kept.contains("Completamente differente"))
+    }
+
+    @Test
+    fun normalizeTitleUnicodeClassesSameAsAndroid() {
+        assertEquals("café müller", ExtractCleaner.normalizeTitle("Café — Müller"))
+        assertEquals("café müller", ExtractCleaner.normalizeTitle("Café\u00A0Müller!!"))
+        assertEquals("こんにちは 世界", ExtractCleaner.normalizeTitle("こんにちは、世界！"))
+        assertEquals("слово дело", ExtractCleaner.normalizeTitle("Слово  —  ДЕЛО"))
+        // Digits and underscore are word characters (\p{N}, _).
+        assertEquals("abc_123 def", ExtractCleaner.normalizeTitle("abc_123 : def"))
+    }
+
     // ---- Rule 2: YAML frontmatter ----
 
     @Test

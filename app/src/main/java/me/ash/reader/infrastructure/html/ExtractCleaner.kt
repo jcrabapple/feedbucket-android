@@ -54,9 +54,18 @@ object ExtractCleaner {
         RegexOption.IGNORE_CASE,
     )
 
-    /** E15.1 — every non-`[\w\s]` RUN → one space (`(?U)` = Python's Unicode `\w`/`\s`). */
-    private val NON_WORD_RUN = Regex("(?U)[^\\w\\s]+")
-    private val WHITESPACE_RUN = Regex("(?U)\\s+")
+    /**
+     * E15.1 — every non-word RUN → one space, whitespace collapsed.
+     * Explicit Unicode classes, NOT the JVM-only `(?U)` inline flag
+     * (UNICODE_CHARACTER_CLASS): Android's ICU-backed `java.util.regex`
+     * rejects `(?U)` with a PatternSyntaxException, which crashed every
+     * 0.1.3 feed open at `ExtractCleaner.<clinit>`. `\p{L}\p{M}\p{N}_`
+     * means Unicode letters/marks/numbers/underscore on BOTH engines
+     * (the Python `\w` intent), and `[\s\p{Z}]` adds the Unicode space
+     * separators to ASCII `\s` on both.
+     */
+    private val NON_WORD_RUN = Regex("[^\\p{L}\\p{M}\\p{N}_\\s]+")
+    private val WHITESPACE_RUN = Regex("[\\s\\p{Z}]+")
 
     /** E15.3 — the two JUNK_HINTS readability4j lacks (`extract.py:30`). */
     private val TOC_TOKENS = listOf("toc-", "table-of-contents")
