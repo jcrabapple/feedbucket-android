@@ -112,11 +112,13 @@ class ReaderExtractStateTest {
 
         const val NOW = 1_700_000_000_000L
         const val ARTICLE_ID = "1\$a1"
+        const val ARTICLE_ID_B = "1\$b1"
         const val FEED_ID = "1\$f1"
         const val RAW_TEASER = "<p>A short teaser body.</p>"
         const val RAW_FULL = "<p>already a complete post body</p>"
         const val STORED_EXTRACTION = "<p>the stored sanitized extraction</p>"
         const val FRESH_EXTRACTION = "<p>a cleaner re-extraction result</p>"
+        const val OTHER_EXTRACTION = "<p>the second article's stored body</p>"
     }
 
     // ------------------------------------------------------------------
@@ -228,6 +230,19 @@ class ReaderExtractStateTest {
             )
         }
 
+        /** Seeds a MULTI-article snapshot list, in the given order (indices matter). */
+        fun seedArticles(vararg articles: ArticleWithFeed) {
+            whenever(articleListUseCase.itemSnapshotList).thenReturn(
+                ItemSnapshotList(
+                    placeholdersBefore = 0,
+                    placeholdersAfter = 0,
+                    items = articles.map<ArticleWithFeed, ArticleFlowItem> {
+                        ArticleFlowItem.Article(it)
+                    },
+                )
+            )
+        }
+
         /** Polls the reader state until [predicate] holds (deadline-bounded). */
         fun awaitState(
             timeoutMs: Long = 10_000,
@@ -242,6 +257,18 @@ class ReaderExtractStateTest {
             error("state condition not met within ${timeoutMs}ms; last = ${vm.readerStateStateFlow.value}")
         }
 
+        /**
+         * FIFO barrier on the single-thread IO executor: returns once all
+         * previously-submitted work (e.g. a gated extraction continuation)
+         * has drained. Makes "stale completion ignored" assertions
+         * deterministic without sleeps.
+         */
+        fun runIoBarrier(timeoutMs: Long = 10_000): Boolean {
+            val latch = CountDownLatch(1)
+            executor.execute { latch.countDown() }
+            return latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+        }
+
         fun close() {
             ioDispatcher.close()
             executor.shutdownNow()
@@ -249,14 +276,16 @@ class ReaderExtractStateTest {
     }
 
     private fun article(
+        id: String = ARTICLE_ID,
+        title: String = "Test Article",
         rawDescription: String = RAW_TEASER,
         fullContent: String? = null,
         originalContent: String? = null,
         link: String = "https://example.com/post",
     ) = Article(
-        id = ARTICLE_ID,
+        id = id,
         date = Date(NOW),
-        title = "Test Article",
+        title = title,
         rawDescription = rawDescription,
         shortDescription = rawDescription.take(20),
         fullContent = fullContent,
@@ -652,6 +681,162 @@ class ReaderExtractStateTest {
             assertEquals(
                 "<p>old snapshot</p>",
                 fixture.vm.readingUiState.value.articleWithFeed?.article?.originalContent,
+            )
+        } finally {
+            fixture.close()
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Review lane 2 — race & null-safety pins
+    // ------------------------------------------------------------------
+
+    /**
+     * Lane 2 defect 1 — a STALE `listIndex` (the list mutated after the tap)
+     * must not open the article sitting at that index: `initData` trusts the
+     * index item only when it actually holds the requested `articleId`, else
+     * it falls through to the id scan.
+     *
+     * REDCHECK: dropping the `.takeIf { it.articleWithFeed.article.id ==
+     * articleId }` guard on `itemByIndex` renders the index-0 article (X)
+     * instead of the requested A, turning this test red.
+     */
+    @Test
+    fun staleListIndexStillOpensTheRequestedArticleById() {
+        val fixture = Fixture(autoExtract = AutoExtractPreference.OFF)
+        try {
+            val x = ArticleWithFeed(
+                article(id = "1\$x", title = "Wrong", fullContent = "<p>wrong body</p>"),
+                feed(),
+            )
+            val a = ArticleWithFeed(
+                article(id = ARTICLE_ID, title = "Right", fullContent = STORED_EXTRACTION),
+                feed(),
+            )
+            // Index 0 holds X; the requested article A sits at index 1.
+            fixture.seedArticles(x, a)
+
+            fixture.vm.initData(articleId = ARTICLE_ID, listIndex = 0)
+
+            val state = fixture.vm.readerStateStateFlow.value
+            assertEquals("stale index must not open the wrong row", ARTICLE_ID, state.articleId)
+            assertEquals(ReaderState.FullContent(STORED_EXTRACTION), state.content)
+            assertEquals(
+                ARTICLE_ID,
+                fixture.vm.readingUiState.value.articleWithFeed?.article?.id,
+            )
+        } finally {
+            fixture.close()
+        }
+    }
+
+    /**
+     * Lane 2 defect 1 — an article that cannot be resolved (deleted, or a
+     * concurrent `clearReadingData`) must NOT NPE on the `findArticleById`
+     * fallback; `initData` resets the reader state instead.
+     *
+     * REDCHECK: restoring `findArticleById(articleId)!!` throws an NPE for a
+     * missing id, turning this test red.
+     */
+    @Test
+    fun missingArticleResetsReaderStateInsteadOfCrashing() {
+        val fixture = Fixture(autoExtract = AutoExtractPreference.OFF)
+        try {
+            // Not in the snapshot list AND findArticleById returns null.
+            fixture.seedArticles()
+            fixture.storedRow = null
+
+            fixture.vm.initData(articleId = "1\$gone", listIndex = null)
+
+            val state = fixture.vm.readerStateStateFlow.value
+            assertNull("missing article must reset articleId", state.articleId)
+            assertNull(fixture.vm.readingUiState.value.articleWithFeed)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    /**
+     * Lane 2 defect 1 — `updateReadStatus` must not NPE when a concurrent
+     * `clearReadingData()` nulls the open row (was `it.articleWithFeed!!`).
+     *
+     * REDCHECK: restoring `it.articleWithFeed!!` throws an NPE after a clear,
+     * turning this test red.
+     */
+    @Test
+    fun updateReadStatusAfterClearDoesNotCrash() {
+        val fixture = Fixture(autoExtract = AutoExtractPreference.OFF)
+        try {
+            fixture.seedArticle(ArticleWithFeed(article(fullContent = STORED_EXTRACTION), feed()))
+            fixture.vm.initData(ARTICLE_ID)
+
+            // Simulate the concurrent clear that nulls the open row.
+            fixture.vm.clearReadingData()
+            assertNull(fixture.vm.readingUiState.value.articleWithFeed)
+
+            // Must be a safe no-op, not an NPE.
+            fixture.vm.updateReadStatus(isUnread = false)
+            assertNull(fixture.vm.readingUiState.value.articleWithFeed)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    /**
+     * Lane 2 defect 2 — switching from article A to B while A's AUTO
+     * extraction is in flight: A's completion (even a SUCCESS) must not
+     * overwrite B's rendered state. `initData` bumps the open-generation and
+     * cancels A's job; the completion path also re-checks the current
+     * `articleId`. The fixture's synchronous mocks mean the generation /
+     * articleId guard is the deciding defense (caller cancellation cannot
+     * interrupt the blocked IO thread).
+     *
+     * REDCHECK: neutralizing the guards (dispatch the handler unconditionally
+     * and drop the `articleId` re-checks in `onExtractionStored`) lets A's
+     * Stored result clobber B, turning this test red.
+     */
+    @Test
+    fun crossArticleExtractionCompletionIsIgnoredAfterSwitch() {
+        val fixture = Fixture(autoExtract = AutoExtractPreference.ON)
+        try {
+            val a = ArticleWithFeed(article(id = ARTICLE_ID, rawDescription = RAW_TEASER), feed())
+            val b = ArticleWithFeed(
+                article(id = ARTICLE_ID_B, rawDescription = RAW_FULL, fullContent = OTHER_EXTRACTION),
+                feed(),
+            )
+            fixture.seedArticles(a, b)
+            fixture.gateExtract = true
+            fixture.nextOutcome = ExtractOutcome.Stored(ARTICLE_ID, Date(NOW))
+            fixture.storedRow = a.withFullContent(FRESH_EXTRACTION)
+
+            // Open A: teaser + toggle ON → AUTO extraction in flight (gated).
+            fixture.vm.initData(articleId = ARTICLE_ID, listIndex = 0)
+            assertTrue("A extraction must be in flight", fixture.entered.await(10, TimeUnit.SECONDS))
+            assertEquals(ReaderState.Loading, fixture.vm.readerStateStateFlow.value.content)
+            assertTrue(fixture.vm.readerStateStateFlow.value.isExtracting)
+
+            // Switch to B while A is still extracting. B is already extracted →
+            // renders immediately and launches no competing extraction.
+            fixture.vm.initData(articleId = ARTICLE_ID_B, listIndex = 1)
+            val afterSwitch = fixture.vm.readerStateStateFlow.value
+            assertEquals(ARTICLE_ID_B, afterSwitch.articleId)
+            assertEquals(ReaderState.FullContent(OTHER_EXTRACTION), afterSwitch.content)
+            assertFalse(afterSwitch.isExtracting)
+
+            // Let A's extraction finish; its handler must be ignored as stale.
+            fixture.gate.countDown()
+            assertTrue("IO barrier timed out", fixture.runIoBarrier())
+
+            val done = fixture.vm.readerStateStateFlow.value
+            assertEquals("B must remain the open article", ARTICLE_ID_B, done.articleId)
+            assertEquals(
+                "A's stale Stored result must not overwrite B",
+                ReaderState.FullContent(OTHER_EXTRACTION),
+                done.content,
+            )
+            assertEquals(
+                ARTICLE_ID_B,
+                fixture.vm.readingUiState.value.articleWithFeed?.article?.id,
             )
         } finally {
             fixture.close()

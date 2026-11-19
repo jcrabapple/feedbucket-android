@@ -76,12 +76,23 @@ class ExtractFetch(
 
         /** Final response was not 2xx (E21: silent no-op, typed reason). */
         data class Non2xx(val code: Int) : FetchOutcome
+
+        /**
+         * Final 2xx response advertised a non-HTML/non-text `Content-Type`
+         * (e.g. `application/pdf`, `image/png`, `application/octet-stream`) —
+         * rejected BEFORE the 5 MiB body is streamed into a String for
+         * Readability/Jsoup (review lane 2). A missing/unparseable
+         * `Content-Type` is allowed (the body is sniffed as before).
+         */
+        data class UnsupportedContentType(val contentType: String?) : FetchOutcome
     }
 
     /**
-     * Guarded fetch of [startUrl]. Every hop response is cached so the walk
-     * and the final body read are ONE HTTP request per URL (the final
-     * response is never re-fetched after the walk).
+     * Guarded fetch of [startUrl]. The final response is cached so the walk
+     * and the body read are ONE HTTP request for that URL (never re-fetched
+     * after the walk); intermediate redirect responses are closed the moment
+     * their `Location` is read, so a multi-hop chain never holds every hop's
+     * socket open until the end (review lane 2).
      */
     suspend fun fetch(startUrl: String): FetchOutcome = withContext(ioDispatcher) {
         val responses = LinkedHashMap<String, TransportResponse>()
@@ -89,8 +100,20 @@ class ExtractFetch(
             val walker = RedirectWalker(
                 guard = { url -> ssrfGuard.check(url) },
                 transport = { url ->
-                    val response = responses.getOrPut(url) { transport.open(url) }
-                    if (response.code in REDIRECT_CODES) response.locationHeader else null
+                    val response = transport.open(url)
+                    if (response.code in REDIRECT_CODES) {
+                        // Intermediate hop: read the Location, then release
+                        // the socket immediately — this response is never
+                        // reused (a revisit re-opens, bounded by MAX_HOPS).
+                        val location = response.locationHeader
+                        runCatching { response.close() }
+                        location
+                    } else {
+                        // Final (non-redirect) response: cache it for the
+                        // body read below.
+                        responses[url] = response
+                        null
+                    }
                 },
             )
             when (val walked = walker.walk(startUrl)) {
@@ -102,20 +125,26 @@ class ExtractFetch(
                 is RedirectWalker.WalkOutcome.Succeeded -> {
                     // The walk visited finalUrl, so its response is cached.
                     val response = responses.getValue(walked.finalUrl)
-                    if (response.code !in SUCCESS_CODES) {
-                        FetchOutcome.Non2xx(response.code)
-                    } else {
-                        val bytes = readAtMost(
-                            response.bodySource(),
-                            ExtractPolicy.MAX_RESPONSE_BYTES,
-                        )
-                        if (bytes == null) {
-                            FetchOutcome.Oversize
-                        } else {
-                            FetchOutcome.Body(
-                                html = decode(bytes, response.contentTypeHeader, walked.finalUrl),
-                                finalUrl = walked.finalUrl,
+                    when {
+                        response.code !in SUCCESS_CODES -> FetchOutcome.Non2xx(response.code)
+                        // Non-HTML/non-text bodies (pdf, images, media,
+                        // octet-stream) are rejected BEFORE the 5 MiB
+                        // streaming read (review lane 2).
+                        !isSupportedContentType(response.contentTypeHeader) ->
+                            FetchOutcome.UnsupportedContentType(response.contentTypeHeader)
+                        else -> {
+                            val bytes = readAtMost(
+                                response.bodySource(),
+                                ExtractPolicy.MAX_RESPONSE_BYTES,
                             )
+                            if (bytes == null) {
+                                FetchOutcome.Oversize
+                            } else {
+                                FetchOutcome.Body(
+                                    html = decode(bytes, response.contentTypeHeader, walked.finalUrl),
+                                    finalUrl = walked.finalUrl,
+                                )
+                            }
                         }
                     }
                 }
@@ -123,6 +152,26 @@ class ExtractFetch(
         } finally {
             responses.values.forEach { runCatching { it.close() } }
         }
+    }
+
+    /**
+     * Content-Type allow-list (review lane 2): absent or unparseable headers
+     * are allowed (sniffed downstream, legacy behavior); otherwise only
+     * `text` types, `application/xml`, `application/xhtml+xml` and `+xml`
+     * suffixed application types reach Readability/Jsoup. Everything else
+     * (pdf, image, audio, video, octet-stream, json, ...) is rejected before
+     * the body is streamed into a String.
+     */
+    private fun isSupportedContentType(header: String?): Boolean {
+        if (header.isNullOrBlank()) return true
+        val mediaType = header.toMediaTypeOrNull() ?: return true
+        val type = mediaType.type.lowercase()
+        val subtype = mediaType.subtype.lowercase()
+        if (type == "text") return true
+        if (type == "application") {
+            return subtype == "xml" || subtype == "xhtml+xml" || subtype.endsWith("+xml")
+        }
+        return false
     }
 
     /**
@@ -143,11 +192,14 @@ class ExtractFetch(
     }
 
     /**
-     * Charset logic ported unchanged from the legacy RssHelper full-content
-     * fetch (`RssHelper.kt:155–186`, E18 "behavior preserved"): header
-     * charset → `meta[http-equiv=content-type]` charset (sniffed from a
-     * UTF-8 pre-decode) → UTF-8 default; any charset parse failure falls
-     * back to UTF-8.
+     * Charset detection ported from the legacy RssHelper full-content fetch
+     * (`RssHelper.kt:155–186`, E18) and hardened (review lane 2):
+     * HTTP `Content-Type` charset first, else sniffed from a UTF-8
+     * pre-decode — HTML5 `<meta charset="...">` OR the legacy
+     * `meta[http-equiv=content-type]` content — else UTF-8. A charset token
+     * is cleaned of quotes and trailing `;` parameters before
+     * [Charset.forName]; any parse failure falls back to UTF-8 exactly like
+     * the legacy path.
      */
     private fun decode(bytes: ByteArray, contentTypeHeader: String?, url: String): String {
         val charset = contentTypeHeader?.toMediaTypeOrNull()?.charset()
@@ -159,22 +211,41 @@ class ExtractFetch(
 
         val charsetFromMeta =
             runCatching {
-                    val element =
-                        Jsoup.parse(peekContent, url)
+                    val document = Jsoup.parse(peekContent, url)
+                    // HTML5: <meta charset="..."> — the attribute IS the token.
+                    normalizeCharsetToken(
+                        document.selectFirst("meta[charset]")?.attr("charset")
+                    )
+                        // HTML4: <meta http-equiv="content-type"
+                        //         content="text/html; charset=...; ...">
+                        ?: document
                             .selectFirst("meta[http-equiv=content-type]")
-                    return@runCatching if (element == null) Charsets.UTF_8
-                    else {
-                        element
-                            .attr("content")
-                            .substringAfter("charset=")
-                            .removeSurrounding("\"")
-                            .lowercase()
-                            .let { Charset.forName(it) }
-                    }
+                            ?.attr("content")
+                            ?.lowercase()
+                            ?.substringAfter("charset=", "")
+                            ?.let { normalizeCharsetToken(it) }
                 }
-                .getOrDefault(Charsets.UTF_8)
+                .getOrNull() ?: Charsets.UTF_8
 
         return if (charsetFromMeta == Charsets.UTF_8) peekContent else String(bytes, charsetFromMeta)
+    }
+
+    /**
+     * Cleans a raw charset token (quotes, trailing `;` parameters such as
+     * `charset=windows-1252; foo=bar`) and resolves it; null when absent,
+     * blank, or not a JVM-known charset.
+     */
+    private fun normalizeCharsetToken(token: String?): Charset? {
+        if (token.isNullOrBlank()) return null
+        val cleaned =
+            token
+                .substringBefore(";")
+                .trim()
+                .removeSurrounding("\"")
+                .removeSurrounding("'")
+                .trim()
+        if (cleaned.isEmpty()) return null
+        return runCatching { Charset.forName(cleaned) }.getOrNull()
     }
 
     /** E18 production transport over the dedicated `@ExtractHttpClient`. */

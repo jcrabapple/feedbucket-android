@@ -8,11 +8,13 @@ import java.util.Date
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.UpdateDetection
@@ -96,7 +98,7 @@ internal class FakeDns(
 }
 
 internal class DaoRecorder {
-    var writeCount = 0
+    @Volatile var writeCount = 0
     var rowsUpdated = 1
     var throwOnWrite: Throwable? = null
     var lastId: String? = null
@@ -698,5 +700,154 @@ class ExtractCoordinatorTest {
 
         assertTrue("expected Body at exactly the cap, got $outcome", outcome is ExtractFetch.FetchOutcome.Body)
         assertEquals(ExtractPolicy.MAX_RESPONSE_BYTES.toInt(), (outcome as ExtractFetch.FetchOutcome.Body).html.length)
+    }
+
+    // ---- review lane 2, defect 4: non-HTML Content-Type mapping -------------
+
+    @Test
+    fun unsupportedContentTypeIsTypedNoOp() = runBlocking {
+        val recorder = DaoRecorder()
+        val transport = FakeTransport()
+        transport.respond(EXTRACT_TEST_LINK, "%PDF-1.7 not html", contentType = "application/pdf")
+        val coordinator = testExtractCoordinator(transport = transport, dao = fakeArticleDao(recorder))
+
+        val outcome = coordinator.extract(extractTestArticle(), extractTestFeed(), ExtractMode.PREFETCH)
+
+        assertTrue("expected Failure, got $outcome", outcome is ExtractOutcome.Failure)
+        assertEquals(
+            ExtractFailureReason.UNSUPPORTED_CONTENT_TYPE,
+            (outcome as ExtractOutcome.Failure).reason,
+        )
+        assertEquals("E21 zero DAO writes", 0, recorder.writeCount)
+    }
+
+    // ---- review lane 2, defect 3: caller cancellation vs shared waiter ------
+
+    /**
+     * Cancelling the OWNING caller mid-extraction must (a) propagate to that
+     * caller as an ordinary CancellationException (structured concurrency)
+     * and (b) leave the shared pipeline running so a concurrent joined
+     * caller (PREFETCH / second open) still receives the real outcome —
+     * never a spurious Failure(CANCELLED).
+     *
+     * REDCHECK: re-attaching the pipeline to the owning caller (running it in
+     * the caller's context and absorbing CancellationException into
+     * Failure(CANCELLED) on the shared deferred) turns this test red — the
+     * waiter receives Failure(CANCELLED) instead of Stored.
+     */
+    @Test
+    fun cancelledOwnerDoesNotFailConcurrentWaiter() {
+        val entered = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val recorder = DaoRecorder()
+        val transport = FakeTransport()
+        transport.handlers[EXTRACT_TEST_LINK] = {
+            entered.countDown()
+            if (!gate.await(10, TimeUnit.SECONDS)) error("gate never released")
+            FakeTransportResponse(200, "text/html", null, extractTestPage().toByteArray())
+        }
+        val singleThread = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val coordinator = testExtractCoordinator(
+            transport = transport,
+            dao = fakeArticleDao(recorder),
+            dispatcher = singleThread,
+        )
+        try {
+            runBlocking {
+                val article = extractTestArticle()
+                // Owner registers and its pipeline blocks in the transport.
+                val owner = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.extract(article, extractTestFeed(), ExtractMode.MANUAL)
+                }
+                assertTrue("owner never reached the transport", entered.await(10, TimeUnit.SECONDS))
+                // Waiter provably joins the SAME in-flight deferred before
+                // the gate opens (UNDISPATCHED: suspends only on await).
+                val waiter = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.extract(article, extractTestFeed(), ExtractMode.PREFETCH)
+                }
+
+                owner.cancel()
+                gate.countDown()
+
+                val ownerCancelled = try {
+                    owner.await()
+                    false
+                } catch (e: CancellationException) {
+                    true
+                }
+                assertTrue("the cancelled caller must see CancellationException", ownerCancelled)
+
+                val waiterOutcome = waiter.await()
+                assertTrue(
+                    "waiter must NOT be failed by the owner's cancellation, got $waiterOutcome",
+                    waiterOutcome is ExtractOutcome.Stored,
+                )
+                assertEquals("exactly ONE fetch for both callers", 1, transport.openCount)
+                assertEquals(1, recorder.writeCount)
+            }
+        } finally {
+            singleThread.close()
+        }
+    }
+
+    /**
+     * A sole caller's cancellation propagates out of [extract] (E21's
+     * "never throws" covers PIPELINE failures, not the caller's own
+     * cancellation) while the coordinator-owned pipeline completes
+     * best-effort and cleans up `inFlight`, so a later extract for the same
+     * article runs a FRESH pipeline instead of joining a dead one.
+     */
+    @Test
+    fun callerCancellationPropagatesWhilePipelineCompletesIndependently() {
+        val entered = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val recorder = DaoRecorder()
+        val transport = FakeTransport()
+        transport.handlers[EXTRACT_TEST_LINK] = {
+            entered.countDown()
+            if (!gate.await(10, TimeUnit.SECONDS)) error("gate never released")
+            FakeTransportResponse(200, "text/html", null, extractTestPage().toByteArray())
+        }
+        val singleThread = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val coordinator = testExtractCoordinator(
+            transport = transport,
+            dao = fakeArticleDao(recorder),
+            dispatcher = singleThread,
+        )
+        try {
+            runBlocking {
+                val caller = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.extract(extractTestArticle(), extractTestFeed(), ExtractMode.MANUAL)
+                }
+                assertTrue("caller never reached the transport", entered.await(10, TimeUnit.SECONDS))
+                caller.cancel()
+
+                val cancelled = try {
+                    caller.await()
+                    false
+                } catch (e: CancellationException) {
+                    true
+                }
+                assertTrue("caller cancellation must propagate", cancelled)
+
+                gate.countDown()
+                // The coordinator-owned pipeline survives the caller and its
+                // best-effort write still lands (bounded poll, no fixed sleep).
+                val deadline = System.currentTimeMillis() + 10_000
+                while (recorder.writeCount < 1 && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(10)
+                }
+                assertEquals("pipeline must complete despite caller cancellation", 1, recorder.writeCount)
+
+                // inFlight was cleaned up: a fresh extract runs a NEW pipeline
+                // (second fetch) instead of awaiting the completed deferred.
+                val second = coordinator.extract(extractTestArticle(), extractTestFeed(), ExtractMode.MANUAL)
+                assertTrue("expected Stored on the fresh run, got $second", second is ExtractOutcome.Stored)
+                assertEquals(2, transport.openCount)
+                assertEquals(2, recorder.writeCount)
+            }
+        } finally {
+            singleThread.close()
+        }
     }
 }

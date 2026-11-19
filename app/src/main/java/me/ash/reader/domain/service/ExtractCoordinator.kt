@@ -16,7 +16,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.UpdateDetection
 import me.ash.reader.domain.model.download.DownloadHtmlSanitizer
@@ -65,6 +64,9 @@ enum class ExtractFailureReason {
     /** E21 — final response was not 2xx. */
     NON_2XX,
 
+    /** E21 — final response advertised a non-HTML/non-text Content-Type. */
+    UNSUPPORTED_CONTENT_TYPE,
+
     /** E17 — redirect chain exceeded the hop budget. */
     TOO_MANY_HOPS,
 
@@ -95,7 +97,12 @@ enum class ExtractFailureReason {
     /** E21 — the extraction write itself failed (or updated no row). */
     DAO_ERROR,
 
-    /** The owning caller's coroutine was cancelled mid-extraction. */
+    /**
+     * The pipeline's own coroutine was cancelled (e.g. process/scope
+     * teardown). Distinct from a CALLER's cancellation, which propagates to
+     * that caller as an ordinary `CancellationException` and leaves the
+     * shared pipeline running for sibling waiters.
+     */
     CANCELLED,
 
     /** Unexpected internal error; absorbed so nothing escapes (E21). */
@@ -129,10 +136,13 @@ sealed interface ExtractOutcome {
  *
  * Failure model (E21, binding): EVERY failure branch returns a typed
  * [ExtractOutcome.Failure] with ZERO DB writes and NO exception escaping;
- * logging is Timber-only, for diagnosis. Owner-cancellation is likewise
- * absorbed into [ExtractFailureReason.CANCELLED] so in-flight waiters always
- * receive an outcome instead of hanging (the extraction contract is
- * best-effort everywhere: E9c PREFETCH, E10 AUTO fallback).
+ * logging is Timber-only, for diagnosis. CALLER cancellation is the one
+ * exception, and it is per-waiter: the shared pipeline runs in a
+ * coordinator-owned scope, so a caller cancelled mid-extraction receives
+ * the ordinary [CancellationException] from its own `await()` (structured
+ * concurrency preserved) while the pipeline and any sibling waiters are
+ * untouched (the extraction contract is best-effort everywhere: E9c
+ * PREFETCH, E10 AUTO fallback).
  *
  * Concurrency: an in-flight per-article dedupe map guarded by a mutex means
  * concurrent [extract] calls for the SAME article share ONE fetch — later
@@ -156,6 +166,15 @@ class ExtractCoordinator(
     private val inFlightMutex = Mutex()
     private val inFlight = ConcurrentHashMap<String, CompletableDeferred<ExtractOutcome>>()
 
+    /**
+     * Coordinator-owned scope for shared pipeline runs (review lane 2): the
+     * pipeline's lifetime is decoupled from any single caller, so cancelling
+     * the owning caller neither kills the run for concurrent joiners nor
+     * poisons their outcome. [SupervisorJob] keeps sibling children
+     * independent; the scope lives as long as the (singleton) coordinator.
+     */
+    private val pipelineScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+
     init {
         // E3 — the disk cache is retired (the canonical store is the article
         // row). One-time hygiene on first coordinator init after upgrade:
@@ -164,7 +183,7 @@ class ExtractCoordinator(
         // feeds re-extract under their existing contracts). Idempotent:
         // once the dir is gone, every later init is a no-op.
         legacyCacheDir?.let { dir ->
-            CoroutineScope(SupervisorJob() + ioDispatcher).launch {
+            pipelineScope.launch {
                 runCatching { dir.deleteRecursively() }
                     .onFailure {
                         Timber.tag(TAG).d(it, "legacy cache delete failed (ignored, E3)")
@@ -209,32 +228,40 @@ class ExtractCoordinator(
                 Registration(deferred, owner = true)
             }
         }
-        if (!registration.owner) {
-            Timber.tag(TAG).d("extract(${article.id}): joining in-flight extraction")
-            return registration.deferred.await()
-        }
-
-        val outcome = try {
-            withContext(ioDispatcher) { runPipeline(article, mode) }
-        } catch (t: Throwable) {
-            // E21 — nothing escapes, ever. Cancellation of the OWNER is
-            // absorbed into a typed failure so joined waiters still get an
-            // outcome (documented deviation from structured-concurrency
-            // rethrow; extraction is best-effort by contract).
-            Timber.tag(TAG).w(t, "extract(${article.id}): unexpected failure (mode=$mode)")
-            if (t is CancellationException) {
-                ExtractOutcome.Failure(ExtractFailureReason.CANCELLED)
-            } else {
-                ExtractOutcome.Failure(ExtractFailureReason.INTERNAL)
+        if (registration.owner) {
+            // Review lane 2 — the shared pipeline runs in the coordinator's
+            // OWN scope: one caller's cancellation can no longer abort the
+            // run (and fail every joined waiter with a spurious CANCELLED).
+            pipelineScope.launch {
+                val outcome = try {
+                    runPipeline(article, mode)
+                } catch (t: Throwable) {
+                    // E21 — pipeline failures never escape as exceptions;
+                    // every branch completes the shared deferred with a
+                    // typed outcome so waiters never hang.
+                    Timber.tag(TAG).w(t, "extract(${article.id}): unexpected failure (mode=$mode)")
+                    if (t is CancellationException) {
+                        ExtractOutcome.Failure(ExtractFailureReason.CANCELLED)
+                    } else {
+                        ExtractOutcome.Failure(ExtractFailureReason.INTERNAL)
+                    }
+                }
+                // Non-suspending cleanup: safe even under cancellation.
+                inFlight.remove(article.id)
+                registration.deferred.complete(outcome)
+                if (outcome is ExtractOutcome.Failure) {
+                    Timber.tag(TAG).d("extract(${article.id}): ${outcome.reason} — silent no-op (E21)")
+                }
             }
+        } else {
+            Timber.tag(TAG).d("extract(${article.id}): joining in-flight extraction")
         }
-        // Non-suspending cleanup: safe even under cancellation.
-        inFlight.remove(article.id)
-        registration.deferred.complete(outcome)
-        if (outcome is ExtractOutcome.Failure) {
-            Timber.tag(TAG).d("extract(${article.id}): ${outcome.reason} — silent no-op (E21)")
-        }
-        return outcome
+        // Owner AND joiners await the same shared deferred. `await()` throws
+        // CancellationException only in the waiter whose OWN coroutine was
+        // cancelled — structured cancellation per caller, while the pipeline
+        // keeps running for everybody else. E21 is preserved: pipeline
+        // failures still surface as typed outcomes, never as exceptions.
+        return registration.deferred.await()
     }
 
     /** E2 fixed order, stage 1: link check → guarded bounded fetch. */
@@ -267,6 +294,9 @@ class ExtractCoordinator(
 
             is ExtractFetch.FetchOutcome.Non2xx ->
                 return ExtractOutcome.Failure(ExtractFailureReason.NON_2XX)
+
+            is ExtractFetch.FetchOutcome.UnsupportedContentType ->
+                return ExtractOutcome.Failure(ExtractFailureReason.UNSUPPORTED_CONTENT_TYPE)
 
             is ExtractFetch.FetchOutcome.Body -> fetched
         }

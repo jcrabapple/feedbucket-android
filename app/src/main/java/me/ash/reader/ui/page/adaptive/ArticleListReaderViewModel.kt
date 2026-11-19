@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -440,6 +441,25 @@ constructor(
     private val _readerState: MutableStateFlow<ReaderState> = MutableStateFlow(ReaderState())
     val readerStateStateFlow = _readerState.asStateFlow()
 
+    /**
+     * Review lane 2 — the in-flight [initData] job. Opening a new article
+     * cancels the previous open so two rapid switches can never interleave
+     * their state writes out of order (last call wins).
+     */
+    private var initDataJob: Job? = null
+
+    /** Review lane 2 — the in-flight extraction job for the current article. */
+    private var extractionJob: Job? = null
+
+    /**
+     * Review lane 2 — open-generation token, bumped on every article open
+     * ([initData]), reader reset ([clearReadingData]) and new extraction
+     * launch. An extraction completion carrying a stale generation is
+     * ignored, so article A's pipeline finishing after a switch to B can
+     * never overwrite B's reader state. Read from IO completion threads.
+     */
+    @Volatile private var extractionGeneration = 0
+
     // --- S27a/S30a — downloads -------------------------------------------------
 
     /** The download row for the currently open article (null = never requested). */
@@ -472,64 +492,101 @@ constructor(
         get() = readingUiState.value.articleWithFeed?.feed
 
     fun initData(articleId: String, listIndex: Int? = null) {
-        viewModelScope.launch {
-            val snapshotList = articleListUseCase.itemSnapshotList
+        // Review lane 2 — cancel the previous open and any extraction still
+        // in flight for it BEFORE starting the new one, so rapid article
+        // switching cannot interleave state writes out of order and a stale
+        // extraction completion cannot overwrite the new article's state.
+        initDataJob?.cancel()
+        cancelActiveExtraction()
+        initDataJob =
+            viewModelScope.launch {
+                val snapshotList = articleListUseCase.itemSnapshotList
 
-            val itemByIndex =
-                listIndex?.let { snapshotList.getOrNull(it) as? ArticleFlowItem.Article }
+                // Review lane 2 — the index-based fast path is only trusted
+                // when it actually holds the REQUESTED article; a stale
+                // `listIndex` (list mutated since the tap) falls through to
+                // the id scan instead of opening the wrong row.
+                val itemByIndex =
+                    listIndex
+                        ?.let { snapshotList.getOrNull(it) as? ArticleFlowItem.Article }
+                        ?.takeIf { it.articleWithFeed.article.id == articleId }
 
-            val itemFromList =
-                if (itemByIndex != null && itemByIndex.articleWithFeed.article.id != articleId) {
-                    itemByIndex
-                } else {
+                val itemFromList =
                     snapshotList.find { item ->
                         item is ArticleFlowItem.Article &&
                             item.articleWithFeed.article.id == articleId
                     } as? ArticleFlowItem.Article
+
+                val item =
+                    itemByIndex?.articleWithFeed
+                        ?: itemFromList?.articleWithFeed
+                        ?: rssService.get().findArticleById(articleId)
+                if (item == null) {
+                    // Deleted/missing article (or a concurrent clear): reset
+                    // the reader instead of crashing on a null dereference.
+                    Timber.tag(TAG)
+                        .w("initData: article $articleId not found — resetting reader state")
+                    _readingUiState.update { ReadingUiState() }
+                    _readerState.update { ReaderState() }
+                    return@launch
                 }
 
-            val item =
-                itemByIndex?.articleWithFeed
-                    ?: (itemFromList?.articleWithFeed
-                        ?: rssService.get().findArticleById(articleId)!!)
-
-            // S23 — mark-read-on-open (default ON, web parity): the overlay marks
-            // the article read in place immediately (sticky generation, S25a);
-            // the S21a DB write (readAt + isUpdated drain + stateVersion) lands in
-            // one transaction when the diff holder commits.
-            if (
-                ReadLifecycle.onOpen(
-                    markReadOnOpen = settingsProvider.settings.markReadOnOpen.value,
-                    wasUnread = diffMapHolder.checkIfUnread(item),
-                ) != null
-            ) {
-                diffMapHolder.updateDiff(item, isUnread = false)
-            }
-            item.run {
-                _readingUiState.update {
-                    it.copy(
-                        articleWithFeed = this,
-                        isStarred = article.isStarred,
-                        isUnread = diffMapHolder.checkIfUnread(this),
-                    )
+                // S23 — mark-read-on-open (default ON, web parity): the overlay marks
+                // the article read in place immediately (sticky generation, S25a);
+                // the S21a DB write (readAt + isUpdated drain + stateVersion) lands in
+                // one transaction when the diff holder commits.
+                if (
+                    ReadLifecycle.onOpen(
+                        markReadOnOpen = settingsProvider.settings.markReadOnOpen.value,
+                        wasUnread = diffMapHolder.checkIfUnread(item),
+                    ) != null
+                ) {
+                    diffMapHolder.updateDiff(item, isUnread = false)
                 }
-                _readerState.update {
-                    it.copy(
-                            articleId = article.id,
-                            feedName = feed.name,
-                            title = article.title,
-                            author = article.author,
-                            link = article.link,
-                            publishedDate = article.date,
+                item.run {
+                    _readingUiState.update {
+                        it.copy(
+                            articleWithFeed = this,
+                            isStarred = article.isStarred,
+                            isUnread = diffMapHolder.checkIfUnread(this),
                         )
-                        .prefetchArticleId()
-                        .renderContent(this)
+                    }
+                    _readerState.update {
+                        it.copy(
+                                articleId = article.id,
+                                feedName = feed.name,
+                                title = article.title,
+                                author = article.author,
+                                link = article.link,
+                                publishedDate = article.date,
+                                // Review lane 2 — a fresh open must not
+                                // inherit the PREVIOUS article's busy/tint
+                                // flags; renderContent re-arms them below if
+                                // it launches an extraction for THIS article.
+                                isExtracting = false,
+                                extractFailed = false,
+                            )
+                            .prefetchArticleId()
+                            .renderContent(this)
+                    }
                 }
             }
-        }
+    }
+
+    /**
+     * Review lane 2 — cancels the in-flight extraction job (if any) and bumps
+     * the open-generation token so a completion already racing on another
+     * thread is ignored by the stale-generation guard in [launchExtraction].
+     */
+    private fun cancelActiveExtraction() {
+        extractionGeneration++
+        extractionJob?.cancel()
+        extractionJob = null
     }
 
     fun clearReadingData() {
+        initDataJob?.cancel()
+        cancelActiveExtraction()
         _readingUiState.update { ReadingUiState() }
         _readerState.update { ReaderState() }
     }
@@ -632,33 +689,60 @@ constructor(
      * reader state IN PLACE — extraction never rolls a list generation nor
      * refreshes Paging (E4/E22: the write leaves `rawDescription` /
      * `shortDescription` untouched, so the flow preview cannot change).
+     *
+     * Review lane 2 — the job is tracked and the open-generation token is
+     * captured at launch: `extractionGeneration` is bumped synchronously by
+     * every article open ([initData]), reader reset ([clearReadingData]) and
+     * new extraction launch, so a completion arriving after the reader moved
+     * on carries a stale generation and is ignored before any handler runs.
+     * (The generation token is the race-free form of an
+     * `_readerState.value.articleId == articleId` check — the articleId read
+     * would race the very `initData` update that dispatches this extraction,
+     * and it also misses same-article re-opens.) The new job supersedes
+     * (cancels) the previous one; note the coordinator pipeline itself is
+     * caller-cancellation resilient, so a cancelled switch-away still lets
+     * the DB write for the OLD article land (best-effort by contract) — only
+     * the UI application is suppressed.
      */
     private fun launchExtraction(articleWithFeed: ArticleWithFeed, mode: ExtractMode) {
         val articleId = articleWithFeed.article.id
-        viewModelScope.launch(ioDispatcher) {
-            when (
+        val generation = ++extractionGeneration
+        extractionJob?.cancel()
+        extractionJob =
+            viewModelScope.launch(ioDispatcher) {
                 val outcome =
                     extractCoordinator.extract(articleWithFeed.article, articleWithFeed.feed, mode)
-            ) {
-                is ExtractOutcome.Stored -> onExtractionStored(articleId, mode)
-                is ExtractOutcome.Skipped ->
-                    onExtractionNotStored(articleWithFeed, mode, failed = false)
-                is ExtractOutcome.Failure ->
-                    onExtractionNotStored(articleWithFeed, mode, failed = true)
+                if (generation != extractionGeneration) {
+                    Timber.tag(TAG)
+                        .d("extraction($articleId, $mode) finished after navigation — ignored")
+                    return@launch
+                }
+                when (outcome) {
+                    is ExtractOutcome.Stored -> onExtractionStored(generation, articleId, mode)
+                    is ExtractOutcome.Skipped ->
+                        onExtractionNotStored(generation, articleWithFeed, mode, failed = false)
+                    is ExtractOutcome.Failure ->
+                        onExtractionNotStored(generation, articleWithFeed, mode, failed = true)
+                }
             }
-        }
     }
 
     /** E4/E10/E12 — in-place state update on success; no list invalidation. */
-    private suspend fun onExtractionStored(articleId: String, mode: ExtractMode) {
+    private suspend fun onExtractionStored(generation: Int, articleId: String, mode: ExtractMode) {
+        // Review lane 2 — a stale completion for a previously open article
+        // must never touch the current reader state (re-checked after the
+        // DB re-read suspends, and atomically inside the state update).
+        if (generation != extractionGeneration) return
         // Re-read the row so the rendered state and the in-memory article
         // carry the DB truth (sanitized fullContent + extractedAt, E3).
         val fresh = rssService.get().findArticleById(articleId)
-        if (fresh != null) {
+        if (generation != extractionGeneration) return
+        if (fresh != null && _readingUiState.value.articleWithFeed?.article?.id == articleId) {
             _readingUiState.update { it.copy(articleWithFeed = fresh) }
         }
         val stored = fresh?.article?.fullContent
         _readerState.update { state ->
+            if (generation != extractionGeneration) return@update state
             val content =
                 when {
                     // E12: re-extract success while viewing `Description`
@@ -681,13 +765,18 @@ constructor(
      * failures; AUTO and force-on-open PREFETCH failures are fully silent.
      */
     private fun onExtractionNotStored(
+        generation: Int,
         articleWithFeed: ArticleWithFeed,
         mode: ExtractMode,
         failed: Boolean,
     ) {
+        // Review lane 2 — never clear another article's busy flag or tint the
+        // current icons for a previous article's failure.
+        if (generation != extractionGeneration) return
         val transientSignal =
             failed && (mode == ExtractMode.MANUAL || mode == ExtractMode.RE_EXTRACT)
         _readerState.update { state ->
+            if (generation != extractionGeneration) return@update state
             state.copy(
                 isExtracting = false,
                 extractFailed = transientSignal,
@@ -718,11 +807,15 @@ constructor(
     private var extractFailureToken = 0
 
     fun updateReadStatus(isUnread: Boolean) {
-        readingUiState.value.articleWithFeed?.let {
-            diffMapHolder.updateDiff(it, isUnread = isUnread)
+        val current = readingUiState.value.articleWithFeed
+        if (current != null) {
+            diffMapHolder.updateDiff(current, isUnread = isUnread)
         }
-        _readingUiState.update {
-            it.copy(isUnread = diffMapHolder.checkIfUnread(it.articleWithFeed!!))
+        // Review lane 2 — a concurrent clearReadingData() can null the row
+        // between the diff write and this update; never dereference with !!.
+        _readingUiState.update { state ->
+            val awf = state.articleWithFeed ?: return@update state
+            state.copy(isUnread = diffMapHolder.checkIfUnread(awf))
         }
     }
 
