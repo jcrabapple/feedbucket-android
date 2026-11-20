@@ -11,6 +11,8 @@ import com.rometools.rome.feed.synd.SyndImageImpl
 import com.rometools.rome.io.SyndFeedInput
 import com.rometools.rome.io.XmlReader
 import java.io.ByteArrayInputStream
+import java.io.InputStream
+import java.io.PushbackInputStream
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.*
 import javax.inject.Inject
@@ -18,6 +20,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.article.Article
 import me.ash.reader.domain.model.article.ArticleIdentity
+import me.ash.reader.domain.model.discovery.DiscoveredFeed
+import me.ash.reader.domain.model.discovery.DiscoverySource
+import me.ash.reader.domain.model.discovery.FeedFormat
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.infrastructure.di.IODispatcher
@@ -26,8 +31,10 @@ import me.ash.reader.ui.ext.currentAccountId
 import me.ash.reader.ui.ext.decodeHTML
 import me.ash.reader.ui.ext.extractDomain
 import me.ash.reader.ui.ext.isFuture
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.executeAsync
 import okhttp3.internal.commonIsSuccessful
 import okio.IOException
@@ -51,6 +58,12 @@ constructor(
     )
 
     companion object {
+
+        /** FD1 — sync-path sniff window for JSON Feed detection (bytes). */
+        private const val SNIFF_BYTES = 4096
+
+        /** FD1 — hard read cap for buffered JSON Feed sync bodies. */
+        private const val SYNC_JSON_MAX_BYTES = 5L * 1024 * 1024
 
         /**
          * S6/S7/S20a ingest identity — pure function (unit-testable, no
@@ -92,7 +105,8 @@ constructor(
             val directBody = directResponse.body.bytes()
             val directHttpContentType = toHttpContentType(directResponse.header("Content-Type"))
 
-            val parsedDirectFeed = runCatching { parseFeed(directBody, directHttpContentType) }.getOrNull()
+            val parsedDirectFeed =
+                runCatching { parseFeed(directBody, directHttpContentType, feedLink) }.getOrNull()
 
             val resolvedFeedLink =
                 if (parsedDirectFeed != null) feedLink
@@ -108,6 +122,7 @@ constructor(
                 parseFeed(
                     discoveredResponse.body.bytes(),
                     toHttpContentType(discoveredResponse.header("Content-Type")),
+                    resolvedFeedLink,
                 )
             }
 
@@ -126,24 +141,79 @@ constructor(
             if (it.contains("charset=", ignoreCase = true)) it else "$it; charset=UTF-8"
         } ?: "text/xml; charset=UTF-8"
 
-    private fun parseFeed(body: ByteArray, httpContentType: String): SyndFeed =
-        ByteArrayInputStream(body).use { inputStream ->
-            SyndFeedInput().build(XmlReader(inputStream, httpContentType))
+    /**
+     * FD1 — parses one feed response body. JSON Feed documents (detected via
+     * the HTTP `Content-Type` or a body sniff for a leading brace plus the
+     * jsonfeed.org marker) go through [JsonFeedParser]; everything else keeps
+     * the existing Rome XML path. [sourceUrl] anchors the JSON Feed title
+     * fallback so subscribing to a minimal document can never see a null
+     * title.
+     */
+    private fun parseFeed(
+        body: ByteArray,
+        httpContentType: String,
+        sourceUrl: String? = null,
+    ): SyndFeed =
+        if (JsonFeedParser.isJsonFeed(httpContentType, body)) {
+            JsonFeedParser.parse(String(body, Charsets.UTF_8), sourceUrl)
+        } else {
+            ByteArrayInputStream(body).use { inputStream ->
+                SyndFeedInput().build(XmlReader(inputStream, httpContentType))
+            }
         }
 
-    private fun discoverFeedLink(pageUrl: String, body: ByteArray): String? {
+    /**
+     * FD1 — generalized autodiscovery: every head `link rel=alternate`
+     * candidate with an href, preserving the link title and advertised feed
+     * type across RSS, Atom, RDF and JSON Feed, deduped by normalized URL.
+     * Feed-typed candidates come first in document order, then any remaining
+     * alternate links (format [FeedFormat.UNKNOWN]), so the legacy
+     * single-link pick ([discoverFeedLink], first of this list) keeps its
+     * exact preferred-then-fallback behavior.
+     */
+    fun discoverFeedLinks(pageUrl: String, body: ByteArray): List<DiscoveredFeed> {
         val document = Jsoup.parse(String(body, Charsets.UTF_8), pageUrl)
-        val links = document.select("head link[rel~=(?i)alternate][href]")
-        val preferred =
-            links.firstOrNull {
-                val type = it.attr("type").lowercase(Locale.ROOT)
-                type == "application/rss+xml" ||
-                    type == "application/atom+xml" ||
-                    type == "application/rdf+xml"
-            }
-        val fallback = links.firstOrNull()
-        return (preferred ?: fallback)?.absUrl("href")?.takeIf { it.isNotBlank() }
+        val pageTitle = document.title().takeIf { it.isNotBlank() }
+        val feedTyped = mutableListOf<DiscoveredFeed>()
+        val untyped = mutableListOf<DiscoveredFeed>()
+        val seen = mutableSetOf<String>()
+        for (link in document.select("head link[rel~=(?i)alternate][href]")) {
+            val href = link.absUrl("href").takeIf { it.isNotBlank() } ?: continue
+            if (!seen.add(DiscoveredFeed.normalizeUrl(href))) continue
+            val format = feedFormatForType(link.attr("type"))
+            val title =
+                link.attr("title").takeIf { it.isNotBlank() }
+                    ?: pageTitle
+                    ?: (href.toHttpUrlOrNull()?.host ?: href)
+            val candidate =
+                DiscoveredFeed(
+                    url = href,
+                    title = title,
+                    description = null,
+                    siteUrl = pageUrl,
+                    iconUrl = null,
+                    format = format,
+                    subscribers = null,
+                    source = DiscoverySource.HTML_ALTERNATE,
+                )
+            if (format == FeedFormat.UNKNOWN) untyped += candidate else feedTyped += candidate
+        }
+        return feedTyped + untyped
     }
+
+    /** Maps an advertised alternate-link `type` attribute to a [FeedFormat]. */
+    private fun feedFormatForType(type: String): FeedFormat =
+        when (type.trim().lowercase(Locale.ROOT)) {
+            "application/rss+xml" -> FeedFormat.RSS
+            "application/rdf+xml" -> FeedFormat.RSS
+            "application/atom+xml" -> FeedFormat.ATOM
+            "application/feed+json" -> FeedFormat.JSON_FEED
+            "application/json" -> FeedFormat.JSON_FEED
+            else -> FeedFormat.UNKNOWN
+        }
+
+    private fun discoverFeedLink(pageUrl: String, body: ByteArray): String? =
+        discoverFeedLinks(pageUrl, body).firstOrNull()?.url
 
     suspend fun queryRssXml(
         feed: Feed,
@@ -161,21 +231,70 @@ constructor(
                     else "$it; charset=UTF-8"
                 } ?: "text/xml; charset=UTF-8"
 
-            response.body.byteStream().use { inputStream ->
-                SyndFeedInput()
-                    .apply { isPreserveWireFeed = true }
-                    .build(XmlReader(inputStream, httpContentType))
-                    .entries
-                    .asSequence()
-                    .takeWhile { latestLink == null || latestLink != it.link }
-                    .map { buildArticleFromSyndEntry(feed, accountId, it, preDate) }
-                    .toList()
-            }
+            parseSyncFeed(response, contentType, httpContentType, feed.url)
+                .entries
+                .asSequence()
+                .takeWhile { latestLink == null || latestLink != it.link }
+                .map { buildArticleFromSyndEntry(feed, accountId, it, preDate) }
+                .toList()
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e("RLog", "queryRssXml[${feed.name}]: ${e.message}")
             listOf()
         }
+
+    /**
+     * FD1 — builds the wire feed for one sync response. A short prefix is
+     * sniffed (then pushed back, so the XML parser sees the identical byte
+     * stream as before): JSON Feed bodies — detected via `Content-Type` or a
+     * leading brace plus the jsonfeed.org marker — go through
+     * [JsonFeedParser] with a hard [SYNC_JSON_MAX_BYTES] read cap; everything
+     * else keeps the existing streaming Rome path with the wire feed
+     * preserved.
+     */
+    private fun parseSyncFeed(
+        response: Response,
+        contentType: String?,
+        httpContentType: String,
+        feedUrl: String,
+    ): SyndFeed {
+        val stream = PushbackInputStream(response.body.byteStream(), SNIFF_BYTES)
+        return stream.use { pushback ->
+            val prefix = ByteArray(SNIFF_BYTES)
+            var read = 0
+            while (read < SNIFF_BYTES) {
+                val n = pushback.read(prefix, read, SNIFF_BYTES - read)
+                if (n < 0) break
+                read += n
+            }
+            if (read > 0) pushback.unread(prefix, 0, read)
+            if (JsonFeedParser.isJsonFeed(contentType, prefix.copyOf(read))) {
+                val body = readCapped(pushback, SYNC_JSON_MAX_BYTES)
+                JsonFeedParser.parse(String(body, Charsets.UTF_8), feedUrl)
+            } else {
+                SyndFeedInput()
+                    .apply { isPreserveWireFeed = true }
+                    .build(XmlReader(pushback, httpContentType))
+            }
+        }
+    }
+
+    /** Reads [input] fully, failing closed once [maxBytes] is exceeded. */
+    private fun readCapped(input: InputStream, maxBytes: Long): ByteArray {
+        val sink = java.io.ByteArrayOutputStream()
+        val chunk = ByteArray(8_192)
+        var total = 0L
+        while (true) {
+            val n = input.read(chunk)
+            if (n < 0) break
+            total += n
+            if (total > maxBytes) {
+                throw IOException("JSON Feed response exceeds $maxBytes bytes")
+            }
+            sink.write(chunk, 0, n)
+        }
+        return sink.toByteArray()
+    }
 
     fun buildArticleFromSyndEntry(
         feed: Feed,
