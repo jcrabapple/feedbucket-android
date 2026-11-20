@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.ModalBottomSheetValue
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.UnfoldLess
@@ -97,6 +98,7 @@ fun FeedsPage(
     navigateToAccountDetail: (Int) -> Unit,
     navigateToFeedDetail: (String) -> Unit,
     navigateToGroupDetail: (String) -> Unit,
+    navigateToDiscoverFeeds: () -> Unit,
 ) {
     var accountTabVisible by remember { mutableStateOf(false) }
 
@@ -206,6 +208,13 @@ fun FeedsPage(
                 },
                 actions = {
                     if (subscribeViewModel.rssService.get().addSubscription) {
+                        FeedbackIconButton(
+                            imageVector = Icons.Outlined.Explore,
+                            contentDescription = stringResource(R.string.discover_feeds),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        ) {
+                            navigateToDiscoverFeeds()
+                        }
                         FeedbackIconButton(
                             imageVector = Icons.Rounded.Add,
                             contentDescription = stringResource(R.string.subscribe),
@@ -342,7 +351,10 @@ fun FeedsPage(
         },
     )
 
-    SubscribeDialog(subscribeViewModel = subscribeViewModel)
+    SubscribeDialog(
+        subscribeViewModel = subscribeViewModel,
+        onNavigateToDiscover = navigateToDiscoverFeeds,
+    )
 
     GroupOptionDrawer(drawerState = groupDrawerState)
     FeedOptionDrawer(drawerState = feedDrawerState)

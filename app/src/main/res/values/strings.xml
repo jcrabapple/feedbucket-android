@@ -548,4 +548,19 @@
     <string name="ai_summary_copy">Copy</string>
     <string name="ai_summary_copied">Summary copied</string>
     <string name="ai_summary_generated_with">Generated with %1$s</string>
+
+    <!-- Feed Discovery (FD2) -->
+    <string name="discover_feeds">Discover feeds</string>
+    <string name="discover_search_placeholder">Topic, website, r/subreddit or @user@host</string>
+    <string name="discover_no_results">No feeds found</string>
+    <string name="discover_latest_articles">Latest articles</string>
+    <string name="discover_subscribers_count">%1$s subscribers</string>
+    <string name="discover_subscribed">Subscribed</string>
+    <string name="discover_subscribe_success">Subscribed to %1$s</string>
+    <string name="discover_preview">Preview</string>
+    <string name="discover_retry">Retry</string>
+    <string name="discover_articles">Articles</string>
+    <string name="discover_podcasts">Podcasts</string>
+    <string name="choose_a_feed">Choose a feed</string>
+    <string name="multiple_feeds_found">This link offers multiple feeds. Choose the one to subscribe to.</string>
 </resources>

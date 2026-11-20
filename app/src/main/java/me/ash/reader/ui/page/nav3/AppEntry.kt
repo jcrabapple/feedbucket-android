@@ -254,6 +254,21 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 navigateToGroupDetail = {
                                     backStack.add(Route.GroupDetail(it))
                                 },
+                                navigateToDiscoverFeeds = {
+                                    backStack.add(Route.DiscoverFeeds)
+                                },
+                            )
+                        }
+                    }
+                    Route.DiscoverFeeds -> {
+                        NavEntry(key) {
+                            me.ash.reader.ui.page.home.feeds.discover.DiscoverFeedsPage(
+                                viewModel =
+                                    hiltViewModel<
+                                        me.ash.reader.ui.page.home.feeds.discover
+                                            .DiscoverFeedsViewModel
+                                    >(),
+                                onBack = onBack,
                             )
                         }
                     }

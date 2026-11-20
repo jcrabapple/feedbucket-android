@@ -41,6 +41,9 @@ sealed interface Route : NavKey {
     // Import & export (Wave G, S32a/S33 — FeedBucket migration + OPML)
     @Serializable data object Migration : Route
 
+    // Feed discovery (FD2 — browse/search/preview/subscribe new feeds)
+    @Serializable data object DiscoverFeeds : Route
+
     // Accounts
     @Serializable data object Accounts : Route
 

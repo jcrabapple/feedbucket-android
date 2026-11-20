@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -22,6 +23,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +47,7 @@ import me.ash.reader.ui.page.home.feeds.FeedOptionView
 @Composable
 fun SubscribeDialog(
     subscribeViewModel: SubscribeViewModel = hiltViewModel(),
+    onNavigateToDiscover: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -97,6 +100,7 @@ fun SubscribeDialog(
                     },
                     text = when (subscribeState) {
                         is SubscribeState.Configure -> subscribeState.searchedFeed.title
+                        is SubscribeState.ChooseFeed -> stringResource(R.string.choose_a_feed)
                         is SubscribeState.Fetching -> stringResource(R.string.searching)
                         is SubscribeState.Idle -> stringResource(R.string.subscribe)
                     },
@@ -114,23 +118,49 @@ fun SubscribeDialog(
                     contentKey = { it is SubscribeState.Configure }
                 ) { state ->
                     when (state) {
+                        is SubscribeState.ChooseFeed -> {
+                            SubscribeCandidateList(
+                                candidates = state.candidates,
+                                onCandidateClick = {
+                                    focusManager.clearFocus()
+                                    subscribeViewModel.chooseFeed(it)
+                                },
+                            )
+                        }
+
                         is SubscribeState.Input -> {
                             val errorText = when (state) {
                                 is SubscribeState.Fetching -> ""
                                 is SubscribeState.Idle -> state.errorMessage ?: ""
+                                is SubscribeState.ChooseFeed -> ""
                             }
 
-                            ClipboardTextField(
-                                state = state.linkState,
-                                modifier = Modifier.fillMaxWidth(),
-                                readOnly = state is SubscribeState.Fetching,
-                                placeholder = stringResource(R.string.feed_or_site_url),
-                                errorText = errorText,
-                                imeAction = ImeAction.Search,
-                                onConfirm = {
-                                    subscribeViewModel.searchFeed()
-                                },
-                            )
+                            Column {
+                                ClipboardTextField(
+                                    state = state.linkState,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    readOnly = state is SubscribeState.Fetching,
+                                    placeholder = stringResource(R.string.feed_or_site_url),
+                                    errorText = errorText,
+                                    imeAction = ImeAction.Search,
+                                    onConfirm = {
+                                        subscribeViewModel.searchFeed()
+                                    },
+                                )
+                                // FD2 — subtle discovery entry point while idle.
+                                if (state is SubscribeState.Idle && onNavigateToDiscover != null) {
+                                    TextButton(
+                                        modifier = Modifier.testTag("subscribe_discover_button"),
+                                        onClick = {
+                                            focusManager.clearFocus()
+                                            subscribeViewModel.hideDrawer()
+                                            onNavigateToDiscover()
+                                        },
+                                    ) {
+                                        Text(stringResource(R.string.discover_feeds))
+                                    }
+                                }
+                            }
                         }
 
                         is SubscribeState.Configure -> {
