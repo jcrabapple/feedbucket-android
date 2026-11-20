@@ -1,7 +1,7 @@
 <div align="center">
     <img width="160" height="160" alt="FeedBucket icon" src="docs/creative/icon/feedbucket-store-512.png">
     <h1>FeedBucket</h1>
-    <p>A standalone, local-first Android RSS reader. No account, no server, no sync.</p>
+    <p>A local-first Android RSS reader with offline reading, rules, and optional AI summaries. No account, no FeedBucket server, no sync.</p>
     <img alt="License" src="https://img.shields.io/github/license/jcrabapple/feedbucket-android?color=c3e7ff&style=flat-square">
     <a target="_blank" href="https://github.com/jcrabapple/feedbucket-android/releases">
         <img alt="Version" src="https://img.shields.io/github/v/release/jcrabapple/feedbucket-android?color=c3e7ff&label=version&style=flat-square">
@@ -28,7 +28,9 @@ The rest of the upstream credits, including MusicYou (design inspiration and the
 
 ## What FeedBucket does
 
-- **Subscriptions and feeds:** add RSS and Atom feeds, group them, and import or export OPML. Inherited from Read You.
+- **Subscriptions and feeds:** add RSS, Atom, and JSON Feed sources, group them, and import or export OPML. Inherited from Read You, with JSON Feed added.
+- **Feed discovery:** the Explore screen offers a curated starter catalog in eight categories, topic and podcast search, and shortcuts for Reddit, Mastodon, GitHub, YouTube, and Substack. Preview a feed's latest articles before you subscribe. Topic search sends your query to Feedly and the iTunes Search API.
+- **AI summaries (optional):** a TL;DR and bullet takeaways for any article, from an OpenAI-compatible endpoint you configure (OpenRouter, OpenAI, or an Ollama server on your LAN). Summaries are saved on the device. The API key is encrypted with the Android Keystore. Article text goes only to the endpoint you set.
 - **Read state you can trust:** read and unread state persists across restarts. Reading positions are restored when you return to a feed. There is a recently-read list with next and previous navigation.
 - **Offline reading:** download articles with their text and images, stored on the device. Limits: 2 MiB of text and up to 10 MiB of images per article, 1 GiB total. Offline articles render in a locked-down WebView with JavaScript off and no outside requests.
 - **Offline search:** full-text search across cached articles. Each account shows how much of its content is indexed.
@@ -48,6 +50,9 @@ The rest of the upstream credits, including MusicYou (design inspiration and the
 - The FeedBucket migration importer, and OPML import with duplicate handling and counts.
 - Material 3 Expressive UI with a static petrol and ink palette, reduced-motion support, and 48dp touch targets. Dynamic color is an opt-in and is off by default.
 - `FeedDetail` and `GroupDetail` screens.
+- AI summaries with a settings screen, a recommended-models list, and a connection test.
+- Feed discovery and the Explore screen.
+- Article sharing that sends the title, a blank line, and the link by default. Settings > Interaction can switch it to link only.
 
 **Removed**
 
@@ -66,12 +71,20 @@ FeedBucket checks GitHub for releases tagged `feedbucket-vX.Y.Z` on this reposit
 
 Releases are signed with FeedBucket's release key. An APK signed with a different key will not install over an existing one.
 
+## Network use
+
+FeedBucket has no server of its own. It connects to:
+
+- The servers for the feeds you subscribe to, and the images and pages those feeds link to.
+- The GitHub releases API, for update checks.
+- Only when you use them: the AI endpoint you configure, and Feedly and the iTunes Search API for discovery search.
+
 ## Install
 
 Download the APK from the [latest release](https://github.com/jcrabapple/feedbucket-android/releases/latest) and check it against its `.sha256` file:
 
 ```shell
-sha256sum -c FeedBucket-0.1.0.apk.sha256
+sha256sum -c FeedBucket-0.1.8.apk.sha256
 ```
 
 Application IDs: `us.snakepit.feedbucket` (release) and `us.snakepit.feedbucket.debug` (debug, installs side by side).
