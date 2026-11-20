@@ -5,12 +5,13 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -34,6 +36,7 @@ import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.ui.component.FeedIcon
 import me.ash.reader.ui.component.base.RYExtensibleVisibility
 import me.ash.reader.ui.page.home.feeds.drawer.feed.FeedOptionViewModel
+import me.ash.reader.ui.theme.palette.FeedBucketColorSchemes
 
 @Composable
 private fun contentPadding(isLastItem: Boolean): PaddingValues = if (isLastItem) PaddingValues(
@@ -93,16 +96,25 @@ private fun FeedItemImpl(
                 )
             }
             if (feed.important != 0) {
-                Badge(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.outline,
-                    content = {
-                        Text(
-                            text = feed.important.toString(),
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    },
-                )
+                // REFRESH-v0.2 section 5.2: secondaryContainer pill with
+                // tabular numerals replaces the low-contrast Badge.
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ) {
+                    Text(
+                        text = feed.important.toString(),
+                        style = MaterialTheme.typography.labelSmall.merge(
+                            fontFeatureSettings = "tnum"
+                        ),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
             }
             // Row overflow → FeedDetail (UI-CONTRACT §2.3); long-press stays
             // as the duplicate drawer shortcut.
@@ -153,7 +165,7 @@ fun FeedItem(
 @Preview
 @Composable
 private fun Preview() {
-    MaterialTheme {
+    MaterialTheme(colorScheme = FeedBucketColorSchemes.Light) {
         Surface {
             FeedItemImpl(
                 feed = Feed(

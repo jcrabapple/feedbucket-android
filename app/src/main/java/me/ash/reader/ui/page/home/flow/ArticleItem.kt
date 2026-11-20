@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.FiberManualRecord
@@ -40,15 +41,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -79,11 +85,48 @@ import me.ash.reader.ui.component.swipe.SwipeableActionsBox
 import me.ash.reader.ui.ext.requiresBidi
 import me.ash.reader.ui.ext.surfaceColorAtElevation
 import me.ash.reader.ui.page.settings.color.flow.generateArticleWithFeedPreview
-import me.ash.reader.ui.theme.Shape20
 import me.ash.reader.ui.theme.applyTextDirection
+import me.ash.reader.ui.theme.palette.FeedBucketColorSchemes
 import me.ash.reader.ui.theme.palette.onDark
 
 private const val TAG = "ArticleItem"
+
+/**
+ * Pure read-state decisions for the flow row (REFRESH-v0.2 sections 1.1-1.3).
+ * Extracted so the emphasis and dot truth table is unit-testable on the JVM.
+ */
+internal object ArticleItemReadState {
+
+    /** Unread-level typography (weight 600 + onSurface + primary feedName). */
+    fun emphasized(
+        readIndicator: FlowArticleReadIndicatorPreference,
+        isUnread: Boolean,
+        isStarred: Boolean,
+    ): Boolean =
+        when (readIndicator) {
+            FlowArticleReadIndicatorPreference.None -> true
+            FlowArticleReadIndicatorPreference.AllRead -> isUnread
+            FlowArticleReadIndicatorPreference.ExcludingStarred -> isUnread || isStarred
+        }
+
+    /** The dot strictly means unread; starred-read rows carry no dot. */
+    fun showDot(
+        readIndicator: FlowArticleReadIndicatorPreference,
+        isUnread: Boolean,
+    ): Boolean = readIndicator != FlowArticleReadIndicatorPreference.None && isUnread
+
+    /** The dot slot is reserved on every row unless the user opted out. */
+    fun reservesDotSlot(readIndicator: FlowArticleReadIndicatorPreference): Boolean =
+        readIndicator != FlowArticleReadIndicatorPreference.None
+
+    /** Keeps feedName on the title edge: 24dp favicon frame + 10dp gap, then the dot slot. */
+    fun feedNameStartPadding(
+        isShowFeedIcon: Boolean,
+        readIndicator: FlowArticleReadIndicatorPreference,
+    ): Dp =
+        (if (isShowFeedIcon) 34.dp else 0.dp) +
+            (if (reservesDotSlot(readIndicator)) 16.dp else 0.dp)
+}
 
 @Composable
 fun ArticleItem(
@@ -133,26 +176,21 @@ fun ArticleItem(
     val articleListDate = LocalFlowArticleListTime.current
     val articleListReadIndicator = LocalFlowArticleListReadIndicator.current
 
+    val emphasized = ArticleItemReadState.emphasized(articleListReadIndicator, isUnread, isStarred)
+    val showDot = ArticleItemReadState.showDot(articleListReadIndicator, isUnread)
+    val reservesDotSlot = ArticleItemReadState.reservesDotSlot(articleListReadIndicator)
+    val feedNameStartPadding =
+        ArticleItemReadState.feedNameStartPadding(articleListFeedIcon.value, articleListReadIndicator)
+    val readStateDescription = stringResource(if (isUnread) R.string.unread else R.string.read)
+
     Column(
         modifier =
             modifier
                 .padding(horizontal = 12.dp)
-                .clip(Shape20)
+                .clip(MaterialTheme.shapes.medium)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .semantics { stateDescription = readStateDescription }
                 .padding(horizontal = 12.dp, vertical = 12.dp)
-                .alpha(
-                    when (articleListReadIndicator) {
-                        FlowArticleReadIndicatorPreference.None -> 1f
-
-                        FlowArticleReadIndicatorPreference.AllRead -> {
-                            if (isUnread) 1f else 0.5f
-                        }
-
-                        FlowArticleReadIndicatorPreference.ExcludingStarred -> {
-                            if (isUnread || isStarred) 1f else 0.5f
-                        }
-                    }
-                )
     ) {
         // Top
         Row(
@@ -166,11 +204,13 @@ fun ArticleItem(
                     modifier =
                         Modifier.weight(1f)
                             .padding(
-                                start = if (articleListFeedIcon.value) 30.dp else 0.dp,
+                                start = feedNameStartPadding,
                                 end = 10.dp,
                             ),
                     text = feedName,
-                    color = MaterialTheme.colorScheme.tertiary,
+                    color =
+                        if (emphasized) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -194,7 +234,7 @@ fun ArticleItem(
                 }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(if (articleListFeedIcon.value) 30.dp else 0.dp))
+                    Spacer(Modifier.width(feedNameStartPadding))
 
                     if (articleListDate.value) {
                         // Time
@@ -229,11 +269,32 @@ fun ArticleItem(
 
                 // Title
                 Row {
+                    if (reservesDotSlot) {
+                        // Reserved 8dp slot: read/unread transitions never shift layout.
+                        // Decorative; the row exposes stateDescription instead.
+                        Box(
+                            modifier =
+                                Modifier.size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (showDot) MaterialTheme.colorScheme.primary
+                                        else Color.Transparent
+                                    )
+                                    .clearAndSetSemantics {}
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     Text(
                         text = title,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color =
+                            if (emphasized) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                         style =
                             MaterialTheme.typography.titleMedium
+                                .merge(
+                                    fontWeight =
+                                        if (emphasized) FontWeight.SemiBold else FontWeight.Normal
+                                )
                                 .applyTextDirection(title.requiresBidi())
                                 .merge(lineHeight = 22.sp),
                         maxLines =
@@ -277,7 +338,10 @@ fun ArticleItem(
             // Image
             if (imgData != null && articleListImage.value) {
                 RYAsyncImage(
-                    modifier = Modifier.padding(start = 10.dp).size(80.dp).clip(Shape20),
+                    modifier =
+                        Modifier.padding(start = 10.dp)
+                            .size(80.dp)
+                            .clip(MaterialTheme.shapes.small),
                     data = imgData,
                     scale = Scale.FILL,
                     precision = Precision.INEXACT,
@@ -684,4 +748,50 @@ fun MenuContentPreview() {
             }
         }
     }
+}
+
+@Preview(name = "ArticleItem light")
+@Composable
+fun ArticleItemLightPreview() {
+    MaterialTheme(colorScheme = FeedBucketColorSchemes.Light) {
+        Surface(color = MaterialTheme.colorScheme.surface) { ArticleItemPreviewStates() }
+    }
+}
+
+@Preview(name = "ArticleItem dark")
+@Composable
+fun ArticleItemDarkPreview() {
+    MaterialTheme(colorScheme = FeedBucketColorSchemes.Dark) {
+        Surface(color = MaterialTheme.colorScheme.surface) { ArticleItemPreviewStates() }
+    }
+}
+
+/** Unread / read / starred-read under the default ExcludingStarred indicator. */
+@Composable
+private fun ArticleItemPreviewStates() {
+    val preview = generateArticleWithFeedPreview()
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        ArticleItemPreviewRow(preview, isUnread = true, isStarred = false)
+        ArticleItemPreviewRow(preview, isUnread = false, isStarred = false)
+        ArticleItemPreviewRow(preview, isUnread = false, isStarred = true)
+    }
+}
+
+@Composable
+private fun ArticleItemPreviewRow(
+    preview: ArticleWithFeed,
+    isUnread: Boolean,
+    isStarred: Boolean,
+) {
+    val article = preview.article
+    ArticleItem(
+        feedName = preview.feed.name,
+        feedIconUrl = preview.feed.icon,
+        title = article.title,
+        shortDescription = article.shortDescription,
+        timeString = article.dateString,
+        imgData = R.drawable.animation,
+        isStarred = isStarred,
+        isUnread = isUnread,
+    )
 }

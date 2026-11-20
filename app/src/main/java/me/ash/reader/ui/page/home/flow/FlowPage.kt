@@ -378,7 +378,6 @@ fun FlowPage(
                     colorScheme = MaterialTheme.colorScheme,
                     typography =
                         MaterialTheme.typography.copy(
-                            headlineMedium = MaterialTheme.typography.displaySmall,
                             titleLarge =
                                 MaterialTheme.typography.titleLarge.merge(
                                     fontSize = 18.sp,
@@ -416,7 +415,7 @@ fun FlowPage(
                                     color = { color },
                                     autoSize =
                                         TextAutoSize.StepBased(
-                                            minFontSize = 28.sp,
+                                            minFontSize = 22.sp,
                                             maxFontSize = textStyle.fontSize,
                                         ),
                                 )
@@ -428,7 +427,7 @@ fun FlowPage(
                                 )
                             }
                         },
-                        expandedHeight = 172.dp,
+                        expandedHeight = 140.dp,
                         scrollBehavior = scrollBehavior,
                         navigationIcon = {
                             FeedbackIconButton(

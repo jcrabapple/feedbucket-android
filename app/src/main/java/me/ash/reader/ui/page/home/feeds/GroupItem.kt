@@ -3,10 +3,12 @@ package me.ash.reader.ui.page.home.feeds
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.rounded.ExpandLess
@@ -29,7 +31,6 @@ import me.ash.reader.R
 import me.ash.reader.domain.model.group.Group
 import me.ash.reader.domain.model.group.GroupWithFeed
 import me.ash.reader.ui.page.home.feeds.drawer.group.GroupOptionViewModel
-import me.ash.reader.ui.theme.Shape32
 import me.ash.reader.ui.theme.ShapeTop32
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -57,7 +58,7 @@ fun GroupItem(
                     onLongClick()
                 }
             )
-            .padding(top = 22.dp)
+            .padding(top = 16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -92,23 +93,41 @@ fun GroupItem(
                         tint = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .clickable { onExpanded() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = if (isExpanded()) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                        contentDescription = stringResource(if (isExpanded()) R.string.expand_less else R.string.expand_more),
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                }
+                // REFRESH-v0.2 section 5.1: 48dp circular tap wrapper around
+                // the 24dp visual expand circle; ripple bounded to the wrapper.
+                GroupExpandButton(isExpanded = isExpanded, onExpanded = onExpanded)
             }
         }
-        Spacer(modifier = Modifier.height(22.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+internal fun GroupExpandButton(
+    isExpanded: () -> Boolean,
+    onExpanded: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .clickable { onExpanded() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (isExpanded()) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                contentDescription = stringResource(if (isExpanded()) R.string.expand_less else R.string.expand_more),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
     }
 }
 
@@ -118,8 +137,9 @@ inline fun GroupWithFeedsContainer(modifier: Modifier = Modifier, content: @Comp
         modifier = modifier
             .padding(top = 16.dp)
             .padding(horizontal = 16.dp)
-            .clip(Shape32)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),
         content = { content() }
     )
 }

@@ -118,6 +118,7 @@ fun BottomBar(
                             } else {
                                 MaterialTheme.colorScheme.outline
                             },
+                            active = isUnread,
                         ) {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             onUnread(!isUnread)
@@ -136,6 +137,7 @@ fun BottomBar(
                             } else {
                                 MaterialTheme.colorScheme.outline
                             },
+                            active = isStarred,
                         ) {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             onStarred(!isStarred)
@@ -183,6 +185,9 @@ fun BottomBar(
                                 isFullContent -> MaterialTheme.colorScheme.onSecondaryContainer
                                 else -> MaterialTheme.colorScheme.outline
                             },
+                            // E13: extractFailed keeps the transient error
+                            // tint without the pill.
+                            active = isFullContent && !extractFailed,
                         ) {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             onFullContent(!isFullContent)

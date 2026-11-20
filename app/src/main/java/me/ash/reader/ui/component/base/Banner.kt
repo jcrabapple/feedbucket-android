@@ -76,6 +76,7 @@ fun Banner(
     desc: String? = null,
     backgroundColor: Color = MaterialTheme.colorScheme.primaryFixed,
     contentColor: Color = MaterialTheme.colorScheme.contentColorFor(backgroundColor),
+    descColor: Color = contentColor.copy(alpha = .7f),
     icon: (@Composable () -> Unit)? = null,
     action: (@Composable () -> Unit)? = null,
     onClick: () -> Unit = {},
@@ -119,7 +120,7 @@ fun Banner(
 //                        modifier = Modifier.animateContentSize(tween()),
                         text = it,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = contentColor.copy(alpha = .7f),
+                        color = descColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

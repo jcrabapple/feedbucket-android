@@ -1,9 +1,10 @@
 package me.ash.reader.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -11,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -39,22 +41,51 @@ fun FeedIcon(
     }
     // e.g. image/gif;base64,R0lGODlh...
     else if ("^image/.*;base64,.*".toRegex().matches(iconUrl)) {
-        Base64Image(
-            modifier = modifier
-                .size(size)
-                .clip(CircleShape),
-            base64Uri = iconUrl,
-            onEmpty = { FontIcon(modifier, size, feedName ?: "") },
-        )
+        FaviconFrame(modifier, size) {
+            Base64Image(
+                modifier = Modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp)),
+                base64Uri = iconUrl,
+                onEmpty = { FontIcon(Modifier, size, feedName ?: "") },
+            )
+        }
     } else {
-        RYAsyncImage(
-            modifier = modifier
-                .size(size)
-                .clip(CircleShape),
-            contentDescription = feedName ?: "",
-            data = iconUrl,
-            placeholder = null,
-        )
+        FaviconFrame(modifier, size) {
+            RYAsyncImage(
+                modifier = Modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp)),
+                contentDescription = feedName ?: "",
+                data = iconUrl,
+                placeholder = null,
+            )
+        }
+    }
+}
+
+/**
+ * REFRESH-v0.2 section 7: constant white content ground with a hairline
+ * border around third-party favicon art (designed for light grounds), so
+ * transparent dark-content icons stay legible in both schemes. Decorative:
+ * the adjacent feed name carries identity. `size` is the inner content size;
+ * the frame is 4dp larger in each dimension.
+ */
+@Composable
+private fun FaviconFrame(
+    modifier: Modifier,
+    size: Dp,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .size(size + 4.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.White)
+            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 
@@ -69,21 +100,27 @@ private fun ImageIcon(modifier: Modifier, placeholderIcon: ImageVector, feedName
 
 @Composable
 private fun FontIcon(modifier: Modifier, size: Dp, feedName: String) {
+    // Outer size + 4dp for uniform geometry with the framed image paths.
     Box(
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary),
+        modifier = modifier.size(size + 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = feedName.ifEmpty { " " }.first().toString(),
-            style = MaterialTheme.typography.bodyMedium.merge(
-                color = MaterialTheme.colorScheme.onPrimary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = feedName.ifEmpty { " " }.first().toString(),
+                style = MaterialTheme.typography.bodyMedium.merge(
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             )
-        )
+        }
     }
 }
 

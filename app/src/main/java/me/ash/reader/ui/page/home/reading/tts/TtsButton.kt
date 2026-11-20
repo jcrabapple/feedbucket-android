@@ -5,6 +5,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -62,7 +63,7 @@ fun TtsButton(
             is TextToSpeechManager.State.Reading -> {
                 Box(
                     modifier = modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .clickable(onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -70,23 +71,33 @@ fun TtsButton(
                         }),
                     contentAlignment = Alignment.Center
                 ) {
-                    TtsProgressIndicator(
-                        { state.progress },
+                    // REFRESH-v0.2 section 4.2: 36dp primaryContainer circle
+                    // behind ring + stop, same grammar as the bottom bar pill.
+                    Box(
                         modifier = Modifier
-                    )
-                    Icon(
-                        Icons.Rounded.Stop,
-                        null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.tertiary
-                    )
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        TtsProgressIndicator(
+                            { state.progress },
+                            modifier = Modifier
+                        )
+                        Icon(
+                            Icons.Rounded.Stop,
+                            null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
             }
 
             else -> {
                 Box(
                     modifier = modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .combinedClickable(onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -130,6 +141,7 @@ fun TtsProgressIndicator(progress: (() -> Float), modifier: Modifier = Modifier)
     CircularProgressIndicator(
         progress = { animatedProgress },
         modifier = modifier.size(24.dp),
+        color = MaterialTheme.colorScheme.primary,
         gapSize = 0.dp,
         strokeCap = StrokeCap.Butt,
         trackColor = MaterialTheme.colorScheme.outlineVariant,
