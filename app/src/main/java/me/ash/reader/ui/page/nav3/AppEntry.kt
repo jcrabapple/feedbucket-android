@@ -295,6 +295,7 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 viewModel = viewModel,
                                 onBack = onBack,
                                 onNavigateToStylePage = { backStack.add(Route.ReadingPageStyle) },
+                                onNavigateToAiSettings = { backStack.add(Route.AiSummaries) },
                             )
                         }
                     }
@@ -310,6 +311,7 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                 navigateToAccounts = { backStack.add(Route.Accounts) },
                                 navigateToColorAndStyle = { backStack.add(Route.ColorAndStyle) },
                                 navigateToInteraction = { backStack.add(Route.Interaction) },
+                                navigateToAiSummaries = { backStack.add(Route.AiSummaries) },
                                 navigateToLanguages = { backStack.add(Route.Languages) },
                                 navigateToTroubleshooting = {
                                     backStack.add(Route.Troubleshooting)
@@ -430,6 +432,17 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                     Route.ReadingPageImage -> NavEntry(key) { ReadingImagePage(onBack = onBack) }
                     Route.ReadingPageVideo -> NavEntry(key) { ReadingVideoPage(onBack = onBack) }
                     Route.Interaction -> NavEntry(key) { InteractionPage(onBack = onBack) }
+                    Route.AiSummaries ->
+                        NavEntry(key) {
+                            me.ash.reader.ui.page.settings.aisummary.AiSummariesPage(
+                                viewModel =
+                                    hiltViewModel<
+                                        me.ash.reader.ui.page.settings.aisummary
+                                            .AiSummariesViewModel
+                                    >(),
+                                onBack = onBack,
+                            )
+                        }
                     Route.Languages -> NavEntry(key) { LanguagesPage(onBack = onBack) }
                     Route.Troubleshooting -> NavEntry(key) { TroubleshootingPage(onBack = onBack) }
                     Route.LicenseList -> NavEntry(key) { LicenseListPage(onBack = onBack) }

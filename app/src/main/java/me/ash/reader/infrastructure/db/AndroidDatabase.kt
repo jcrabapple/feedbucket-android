@@ -20,9 +20,11 @@ import me.ash.reader.domain.model.rule.ActionRule
 import me.ash.reader.domain.model.rule.StateApplyBefore
 import me.ash.reader.domain.model.rule.StateApplyRun
 import me.ash.reader.domain.model.search.SavedSearch
+import me.ash.reader.domain.model.summary.ArticleSummary
 import me.ash.reader.domain.repository.AccountDao
 import me.ash.reader.domain.repository.ActionRuleDao
 import me.ash.reader.domain.repository.ArticleDao
+import me.ash.reader.domain.repository.ArticleSummaryDao
 import me.ash.reader.domain.repository.DownloadDao
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
@@ -43,8 +45,9 @@ import java.util.*
         ImportRun::class, ImportIdentity::class,
         StateApplyRun::class, StateApplyBefore::class,
         ArticleFts::class,
+        ArticleSummary::class,
     ],
-    version = 10,
+    version = 11,
     // NOTE: the upstream AutoMigrations (5->6, 5->7, 6->7) were converted to
     // explicit Migration objects below: with v8 entity changes, Room's KSP
     // re-derives auto-migrations against the changed entities and clobbers
@@ -72,6 +75,7 @@ abstract class AndroidDatabase : RoomDatabase() {
     abstract fun positionDao(): PositionDao
     abstract fun importDao(): ImportDao
     abstract fun stateApplyDao(): StateApplyDao
+    abstract fun articleSummaryDao(): ArticleSummaryDao
 
     companion object {
 
@@ -117,6 +121,7 @@ val allMigrations = arrayOf(
     MIGRATION_7_8,
     MIGRATION_8_9,
     MIGRATION_9_10,
+    MIGRATION_10_11,
 )
 
 @Suppress("ClassName")
@@ -382,6 +387,27 @@ object MIGRATION_9_10 : Migration(9, 10) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
             "CREATE INDEX IF NOT EXISTS `index_archived_article_feedId` ON `archived_article` (`feedId`)"
+        )
+    }
+}
+
+/**
+ * AI Summaries (schema v11) — the `article_summary` cache table: one row
+ * per article holding the last generated summary, its model, whether the
+ * summarized source was the extracted full content, and the creation time.
+ * The `articleId` foreign key cascades on delete (derived data) and is
+ * indexed. DDL is Room-exact (verified against the generated
+ * AndroidDatabase_Impl createAllTables and the committed 11.json export).
+ */
+@Suppress("ClassName")
+object MIGRATION_10_11 : Migration(10, 11) {
+
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `article_summary` (`articleId` TEXT NOT NULL, `summary` TEXT NOT NULL, `model` TEXT NOT NULL, `sourceIsFullContent` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`articleId`), FOREIGN KEY(`articleId`) REFERENCES `article`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_article_summary_articleId` ON `article_summary` (`articleId`)"
         )
     }
 }

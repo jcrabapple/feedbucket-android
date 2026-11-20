@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.outlined.FiberManualRecord
 import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
@@ -66,6 +67,7 @@ fun BottomBar(
     onFullContent: (isFullContent: Boolean) -> Unit = {},
     onBoldCharacters: () -> Unit = {},
     onReadAloud: () -> Unit = {},
+    onAiSummary: () -> Unit = {},
 ) {
     val tonalElevation = LocalReadingPageTonalElevation.current
     val isOutlined = tonalElevation == ReadingPageTonalElevationPreference.Outlined
@@ -149,6 +151,19 @@ fun BottomBar(
                             onNextArticle()
                         }
                         ttsButton()
+                        // AI Summaries — opens the reader summary overlay.
+                        // Same grammar as its siblings: 48.dp target, haptic
+                        // tap, stable contentDescription (TalkBack).
+                        CanBeDisabledIconButton(
+                            disabled = false,
+                            modifier = Modifier.size(48.dp),
+                            imageVector = Icons.Outlined.Psychology,
+                            contentDescription = stringResource(R.string.ai_summary),
+                            tint = MaterialTheme.colorScheme.outline,
+                        ) {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            onAiSummary()
+                        }
                         // E11 — extract-when-none / toggle-when-extracted is
                         // routed by the caller; the button keeps its position,
                         // 48.dp target, haptic, icon and stable

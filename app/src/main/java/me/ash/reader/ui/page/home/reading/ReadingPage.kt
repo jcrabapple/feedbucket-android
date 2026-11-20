@@ -82,6 +82,7 @@ fun ReadingPage(
     onLoadArticle: (String, Int) -> Unit,
     onNavAction: (NavigationAction) -> Unit,
     onNavigateToStylePage: () -> Unit,
+    onNavigateToAiSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
@@ -96,6 +97,8 @@ fun ReadingPage(
 
     var isReaderScrollingDown by remember { mutableStateOf(false) }
     var showFullScreenImageViewer by remember { mutableStateOf(false) }
+    // AI Summaries — reader overlay visibility (brain button in BottomBar).
+    var showAiSummaryOverlay by rememberSaveable { mutableStateOf(false) }
     val imageSavedToast = stringResource(R.string.image_saved)
     val imageSaveFailedToast = stringResource(R.string.image_save_failed)
 
@@ -515,6 +518,7 @@ fun ReadingPage(
                             }
                         },
                         onBoldCharacters = { (!boldCharacters).put(context, coroutineScope) },
+                        onAiSummary = { showAiSummaryOverlay = true },
                         onReadAloud = {
                             viewModel.textToSpeechManager.readHtml(
                                 readerState.content.text ?: return@BottomBar
@@ -569,6 +573,17 @@ fun ReadingPage(
                 )
             },
             onDismissRequest = { showFullScreenImageViewer = false },
+        )
+    }
+    // AI Summaries — overlay above the reader; keyed on the current article
+    // so a switch re-runs the cache-first flow under a fresh generation.
+    val overlayArticleId = readerState.articleId
+    if (showAiSummaryOverlay && overlayArticleId != null) {
+        AiSummaryOverlay(
+            articleId = overlayArticleId,
+            isFullContent = readerState.content is ReaderState.FullContent,
+            onNavigateToAiSettings = onNavigateToAiSettings,
+            onDismiss = { showAiSummaryOverlay = false },
         )
     }
 }

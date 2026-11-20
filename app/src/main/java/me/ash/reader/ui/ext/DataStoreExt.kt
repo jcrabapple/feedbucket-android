@@ -205,6 +205,11 @@ sealed interface PreferencesKey {
         // E20 (SPEC-EXTRACT-v1) — adaptive on-open extraction toggle
         const val autoExtractFullContent = "autoExtractFullContent"
 
+        // AI Summaries (non-secret only; the API key lives encrypted in the
+        // AndroidKeyStore-backed secret store, never in the DataStore)
+        const val aiSummaryBaseUrl = "aiSummaryBaseUrl"
+        const val aiSummaryModel = "aiSummaryModel"
+
         // Languages
         const val languages = "languages"
 
@@ -284,6 +289,9 @@ sealed interface PreferencesKey {
                 StringKey(openLinkAppSpecificBrowser),
                 IntKey(sharedContent),
                 BooleanKey(autoExtractFullContent),
+                // AI Summaries
+                StringKey(aiSummaryBaseUrl),
+                StringKey(aiSummaryModel),
                 // Languages
                 IntKey(languages),
             )

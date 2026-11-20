@@ -11,7 +11,6 @@ import me.ash.reader.R
 import me.ash.reader.ui.ext.DataStoreKey
 import me.ash.reader.ui.ext.DataStoreKey.Companion.sharedContent
 import me.ash.reader.ui.ext.dataStore
-import me.ash.reader.ui.ext.orNotEmpty
 import me.ash.reader.ui.ext.put
 
 val LocalSharedContent = compositionLocalOf<SharedContentPreference> { SharedContentPreference.default }
@@ -37,9 +36,30 @@ sealed class SharedContentPreference(val value: Int) : Preference() {
         }
 
     fun share(context: Context, title: String?, link: String?) {
-        when (this) {
-            OnlyLink -> share(context, link.orEmpty())
-            TitleAndLink -> share(context, title.orNotEmpty { it + "\n" } + link.orEmpty())
+        share(context, formatContent(title, link))
+    }
+
+    /**
+     * Pure share-text formatting, extracted for JVM testability.
+     *
+     * [TitleAndLink] produces `<title>\n\n<link>` (a blank line between the
+     * two). A null/blank side is dropped WITHOUT leaving a leading or
+     * trailing blank line: title-only and link-only degrade to the single
+     * available part, both-blank produces an empty string.
+     */
+    fun formatContent(title: String?, link: String?): String {
+        return when (this) {
+            OnlyLink -> link.orEmpty()
+            TitleAndLink -> {
+                val t = title?.takeIf { it.isNotBlank() }
+                val l = link?.takeIf { it.isNotBlank() }
+                when {
+                    t != null && l != null -> t + "\n\n" + l
+                    t != null -> t
+                    l != null -> l
+                    else -> ""
+                }
+            }
         }
     }
 
@@ -52,8 +72,19 @@ sealed class SharedContentPreference(val value: Int) : Preference() {
 
     companion object {
 
-        val default = OnlyLink
-        val values = listOf(OnlyLink, TitleAndLink)
+        // FeedBucket: share title + blank line + link out of the box.
+        // OnlyLink stays selectable in Settings -> Interaction.
+        // Getters (not eagerly initialized fields): a companion field is
+        // assigned during <clinit>, and if the FIRST class-init entry point
+        // is one of the nested objects themselves, that object's INSTANCE is
+        // still null while the companion initializes (JVM recursive-init
+        // semantics) — the field would capture a null. Lazy evaluation on
+        // access is always fully initialized.
+        val default: SharedContentPreference
+            get() = TitleAndLink
+
+        val values: List<SharedContentPreference>
+            get() = listOf(OnlyLink, TitleAndLink)
 
         fun fromPreferences(preferences: Preferences): SharedContentPreference =
             when (preferences[DataStoreKey.keys[sharedContent]?.key as Preferences.Key<Int>]) {

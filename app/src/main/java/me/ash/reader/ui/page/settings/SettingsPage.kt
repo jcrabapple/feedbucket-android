@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.ImportExport
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Rule
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.TouchApp
@@ -58,6 +59,7 @@ fun SettingsPage(
     navigateToAccounts: () -> Unit,
     navigateToColorAndStyle: () -> Unit,
     navigateToInteraction: () -> Unit,
+    navigateToAiSummaries: () -> Unit,
     navigateToLanguages: () -> Unit,
     navigateToTroubleshooting: () -> Unit,
     navigateToLicenseList: () -> Unit,
@@ -138,6 +140,15 @@ fun SettingsPage(
                         desc = stringResource(R.string.interaction_desc),
                         icon = Icons.Outlined.TouchApp,
                         onClick = navigateToInteraction
+                    )
+                }
+                item {
+                    // AI Summaries — OpenAI-compatible endpoint settings.
+                    SelectableSettingGroupItem(
+                        title = stringResource(R.string.ai_summaries),
+                        desc = stringResource(R.string.ai_summaries_desc),
+                        icon = Icons.Outlined.Psychology,
+                        onClick = navigateToAiSummaries
                     )
                 }
                 item {
