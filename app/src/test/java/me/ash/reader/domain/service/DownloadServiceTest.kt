@@ -24,6 +24,8 @@ import me.ash.reader.domain.model.download.DownloadPolicy
 import me.ash.reader.domain.model.download.DownloadStore
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.DownloadDao
+import me.ash.reader.infrastructure.html.READER_TABLE_FIXTURE_HTML
+import me.ash.reader.infrastructure.html.ReaderTables
 import me.ash.reader.infrastructure.net.SsrfGuard
 import okhttp3.Call
 import okhttp3.MediaType
@@ -41,6 +43,7 @@ import okio.Timeout
 import okio.buffer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -372,6 +375,35 @@ class DownloadServiceTest {
         verify(dao).bumpImageProgress(articleId, payload.size.toLong(), assetsComplete = false)
         verify(dao).setAssetsComplete(articleId, true)
         verify(dao).markReady(eq(articleId), any(), eq(1), any())
+        Unit
+    }
+
+    @Test
+    fun downloadWritesSelfContainedOfflinePageWithResponsiveTables() = runBlocking {
+        // Card t_1ed5c518: the committed index.html is a FULL self-contained
+        // document — shared responsive table CSS inline, data-label column
+        // labels derived in Kotlin (the hardened offline WebView runs no
+        // JavaScript), scroll wrappers in place, zero network references.
+        val dao = mock<DownloadDao>()
+        whenever(dao.queryByArticleId(articleId)).thenReturn(pendingRow())
+        val articleDao = mock<ArticleDao>()
+        whenever(articleDao.queryById(articleId))
+            .thenReturn(articleWith(READER_TABLE_FIXTURE_HTML))
+        val store = DownloadStore(tmp.newFolder("downloads"))
+        val service = serviceWith(dao, store, articleDao)
+
+        service.download(articleId)
+
+        val page = File(store.articleDir(1, articleId), "index.html").readText()
+        assertTrue("offline page must be a full document", page.startsWith("<!DOCTYPE html>"))
+        assertTrue("viewport meta drives the phone breakpoint", page.contains("width=device-width"))
+        assertTrue("shared table CSS embedded", page.contains(ReaderTables.TABLE_CSS))
+        assertTrue("labels derived without JavaScript", page.contains("data-label=\"Tier\""))
+        assertTrue(
+            "scroll wrapper present",
+            page.contains("class=\"${ReaderTables.SCROLL_WRAPPER_CLASS}\""),
+        )
+        assertFalse("offline page makes zero network calls", page.contains("https://"))
         Unit
     }
 

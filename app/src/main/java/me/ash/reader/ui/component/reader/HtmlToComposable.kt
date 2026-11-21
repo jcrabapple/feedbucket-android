@@ -52,6 +52,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import java.io.InputStream
 import me.ash.reader.R
+import me.ash.reader.infrastructure.html.ReaderTables
 import me.ash.reader.infrastructure.preference.LocalReadingImageMaximize
 import me.ash.reader.ui.ext.requiresBidi
 import me.ash.reader.ui.theme.applyTextDirection
@@ -604,25 +605,34 @@ private fun TextComposer.appendTextChildren(
                                     terminateCurrentText()
                                 }
 
-                            element
-                                .children()
-                                .filter {
-                                    it.tagName() == "thead" ||
-                                        it.tagName() == "tbody" ||
-                                        it.tagName() == "tfoot"
+                            // Card t_1ed5c518: each DATA row renders as its own
+                            // block; every cell becomes a "<header>: <value>"
+                            // line with the header in bold, so columns can
+                            // never run together. Rows are separated by a
+                            // blank line (withParagraph). Links and images
+                            // inside cells keep their normal behavior.
+                            ReaderTables.labeledDataRows(element).forEach { row ->
+                                withParagraph {
+                                    row.forEachIndexed { cellIndex, labeledCell ->
+                                        if (cellIndex > 0) append('\n')
+                                        val label = labeledCell.label
+                                        if (label != null) {
+                                            withComposableStyle(style = { boldStyle() }) {
+                                                append(label)
+                                            }
+                                            append(": ")
+                                        }
+                                        appendTextChildren(
+                                            labeledCell.element.childNodes(),
+                                            lazyListScope = lazyListScope,
+                                            imagePlaceholder = imagePlaceholder,
+                                            onLinkClick = onLinkClick,
+                                            onImageClick = onImageClick,
+                                            baseUrl = baseUrl,
+                                        )
+                                    }
                                 }
-                                .flatMap { it.children().filter { it.tagName() == "tr" } }
-                                .forEach { row ->
-                                    appendTextChildren(
-                                        row.childNodes(),
-                                        lazyListScope = lazyListScope,
-                                        imagePlaceholder = imagePlaceholder,
-                                        onLinkClick = onLinkClick,
-                                        onImageClick = onImageClick,
-                                        baseUrl = baseUrl,
-                                    )
-                                    terminateCurrentText()
-                                }
+                            }
 
                             append("\n\n")
                         }

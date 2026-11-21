@@ -1,5 +1,7 @@
 package me.ash.reader.ui.component.webview
 
+import me.ash.reader.infrastructure.html.ReaderTables
+
 object WebViewScript {
 
     fun get(boldCharacters: Boolean) = """
@@ -92,5 +94,7 @@ images.forEach(function(img) {
         console.error("Failed to load image:", img.src);
     };
 });
+
+${ReaderTables.TABLE_LABEL_SCRIPT}
 """
 }

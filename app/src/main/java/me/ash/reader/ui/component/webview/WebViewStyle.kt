@@ -1,5 +1,7 @@
 package me.ash.reader.ui.component.webview
 
+import me.ash.reader.infrastructure.html.ReaderTables
+
 object WebViewStyle {
 
     private fun argbToCssColor(argb: Int): String = String.format("#%06X", 0xFFFFFF and argb)
@@ -67,10 +69,10 @@ ${applyFontFace(fontPath)}
     --blockquote-border-width: 3px;
     --blockquote-border-color: ${argbToCssColor(textColor)}33;
     --table-margin: ${tableMargin}px;
-    --table-border-width;
-    --table-border-color;
-    --table-cell-padding: 0.2em;
-    --table-alt-row-bg-color;
+    --table-border-width: 1px;
+    --table-border-color: ${argbToCssColor(textColor)}33;
+    --table-cell-padding: 0.45em 0.65em;
+    --table-alt-row-bg-color: ${argbToCssColor(textColor)}0F;
     --code-text-color: ${argbToCssColor(codeTextColor)};
     --code-bg-color: ${argbToCssColor(codeBgColor)};
     --code-scrollbar-color: ${argbToCssColor(codeTextColor)}22;
@@ -248,35 +250,7 @@ blockquote img {
 }
 
 /* Table  */
-table {
-    display: block;
-    max-width: var(--content-width) !important;
-    width: 100% !important;
-    border-collapse: collapse !important;
-    margin-left: var(--table-margin) !important;
-    margin-right: var(--table-margin) !important;
-}
-
-table th,
-table td {
-    border: var(--table-border-width) solid var(--table-border-color) !important;
-    padding: var(--table-cell-padding) !important;
-    line-height: var(--line-height) !important;
-    letter-spacing: var(--letter-spacing) !important;
-    text-align: var(--text-align) !important;
-}
-
-table tr {
-    display: block;
-}
-
-table tr table tr td {
-    display: inline-block;
-}
-
-table tr:nth-child(even) {
-    background-color: var(--table-alt-row-bg-color) !important;
-}
+${ReaderTables.TABLE_CSS}
 
 /* Code */
 pre,

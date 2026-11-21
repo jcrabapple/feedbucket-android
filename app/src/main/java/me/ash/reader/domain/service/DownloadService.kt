@@ -22,6 +22,7 @@ import me.ash.reader.domain.model.download.DownloadStore
 import me.ash.reader.domain.repository.ArticleDao
 import me.ash.reader.domain.repository.DownloadDao
 import me.ash.reader.infrastructure.di.DownloadHttpClient
+import me.ash.reader.infrastructure.html.ReaderTables
 import me.ash.reader.infrastructure.net.RedirectWalker
 import me.ash.reader.infrastructure.net.SsrfGuard
 import okhttp3.OkHttpClient
@@ -154,8 +155,13 @@ constructor(
         }
 
         // Stage: index.html first, manifest LAST, then the single atomic rename.
+        // Card t_1ed5c518: the stored page is a self-contained document —
+        // sanitized body wrapped with the shared responsive table CSS and
+        // Kotlin-derived data-label annotations (the hardened offline WebView
+        // runs NO JavaScript). Everything is inline: zero network calls.
+        val offlineHtml = ReaderTables.offlinePage(rewrittenHtml)
         val staging = downloadStore.prepareStaging(accountId, articleId)
-        downloadStore.writeText(staging, rewrittenHtml)
+        downloadStore.writeText(staging, offlineHtml)
         downloadStore.writeManifestAtomic(
             staging,
             DownloadManifest(
@@ -172,7 +178,7 @@ constructor(
         }
         downloadDao.markReady(
             articleId,
-            textBytes = rewrittenHtml.toByteArray(Charsets.UTF_8).size.toLong(),
+            textBytes = offlineHtml.toByteArray(Charsets.UTF_8).size.toLong(),
             expectedImageCount = candidates.size,
             now = System.currentTimeMillis(),
         )
