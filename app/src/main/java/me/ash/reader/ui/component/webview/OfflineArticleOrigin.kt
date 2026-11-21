@@ -17,6 +17,13 @@ object OfflineArticleOrigin {
     const val ORIGIN = "https://appassets.androidplatform.net"
     const val PATH_PREFIX = "/app/"
 
+    /**
+     * Bundled reading-font files (APK res/font, card t_0f68461a) are served
+     * under this prefix INSIDE the appassets contract, so the hardened
+     * renderer's zero-network rule is unchanged.
+     */
+    const val FONTS_PATH_PREFIX = "/app/fonts/"
+
     /** The only URLs the hardened renderer may serve. */
     fun isAppAssetsUrl(url: String): Boolean = url.startsWith(ORIGIN + PATH_PREFIX)
 

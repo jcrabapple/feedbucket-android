@@ -6,24 +6,51 @@ object WebViewStyle {
 
     private fun argbToCssColor(argb: Int): String = String.format("#%06X", 0xFFFFFF and argb)
 
+    /** Default `@font-face` family name the reader CSS has always referenced. */
+    const val DEFAULT_FONT_FAMILY = "external"
+
     private fun applyFontFace(
-        fontPath: String? = null
-    ): String = if (fontPath != null) """
-        @font-face {
-            font-family: external;
-            src: url("file://$fontPath")
+        fontPath: String? = null,
+        italicFontPath: String? = null,
+        fontFamilyName: String = DEFAULT_FONT_FAMILY,
+    ): String {
+        if (fontPath == null) return ""
+        val sb = StringBuilder()
+        sb.append(
+            """
+            @font-face {
+                font-family: '$fontFamilyName';
+                src: url("file://$fontPath");
+                font-style: normal;
+            }
+            """.trimIndent()
+        )
+        if (italicFontPath != null) {
+            sb.append("\n").append(
+                """
+                @font-face {
+                    font-family: '$fontFamilyName';
+                    src: url("file://$italicFontPath");
+                    font-style: italic;
+                }
+                """.trimIndent()
+            )
         }
-    """.trimIndent() else ""
+        return sb.toString()
+    }
 
     private fun applyFontFamily(
-        fontPath: String? = null
+        fontPath: String? = null,
+        fontFamilyName: String = DEFAULT_FONT_FAMILY,
     ): String = if (fontPath != null) """
-        --font-family: external;
+        --font-family: '$fontFamilyName';
     """.trimIndent() else ""
 
     fun get(
         fontSize: Int,
         fontPath: String? = null,
+        italicFontPath: String? = null,
+        fontFamilyName: String = DEFAULT_FONT_FAMILY,
         lineHeight: Float,
         letterSpacing: Float,
         textMargin: Int,
@@ -42,9 +69,9 @@ object WebViewStyle {
         selectionTextColor: Int,
         selectionBgColor: Int,
     ): String = """
-${applyFontFace(fontPath)}
+${applyFontFace(fontPath, italicFontPath, fontFamilyName)}
 :root {
-    ${applyFontFamily(fontPath)}
+    ${applyFontFamily(fontPath, fontFamilyName)}
     --font-size: ${fontSize}px;
     --line-height: ${lineHeight * 1.5f};
     --letter-spacing: ${letterSpacing}px;

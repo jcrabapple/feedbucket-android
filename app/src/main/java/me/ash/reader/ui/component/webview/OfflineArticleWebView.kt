@@ -10,6 +10,7 @@ import java.io.File
 import me.ash.reader.domain.model.download.DownloadStore
 import me.ash.reader.infrastructure.preference.LocalOpenLink
 import me.ash.reader.infrastructure.preference.LocalOpenLinkSpecificBrowser
+import me.ash.reader.infrastructure.preference.LocalReadingFonts
 import me.ash.reader.ui.ext.openURL
 
 /** Routing target for a downloaded (ready) article (S27a/S30a). */
@@ -63,9 +64,10 @@ fun OfflineArticleWebView(
     val context = LocalContext.current
     val openLink = LocalOpenLink.current
     val openLinkSpecificBrowser = LocalOpenLinkSpecificBrowser.current
+    val readingFonts = LocalReadingFonts.current
 
     val webView =
-        remember(target) {
+        remember(target, readingFonts) {
             WebView(context).apply {
                 OfflineArticleClient.harden(settings)
                 webViewClient =
@@ -77,6 +79,7 @@ fun OfflineArticleWebView(
                             ),
                         onOpenLink = { url -> context.openURL(url, openLink, openLinkSpecificBrowser) },
                         onRequest = requestListener,
+                        pageStyle = readingFonts.offlinePageStyle(),
                     )
             }
         }

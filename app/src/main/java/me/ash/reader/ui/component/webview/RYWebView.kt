@@ -91,9 +91,7 @@ fun RYWebView(
     val fontPath =
         if (readingFonts is ReadingFontsPreference.External)
             ExternalFonts.FontType.ReadingFont.toPath(context)
-        else if (readingFonts is ReadingFontsPreference.GoogleSans) {
-            "/android_res/font/google_sans_flex.ttf"
-        } else null
+        else readingFonts.webViewFontPath()
 
     AndroidView(
         modifier = modifier,
@@ -110,6 +108,8 @@ fun RYWebView(
                         WebViewStyle.get(
                             fontSize = fontSize,
                             fontPath = fontPath,
+                            italicFontPath = readingFonts.webViewItalicFontPath(),
+                            fontFamilyName = readingFonts.cssFontFamily(),
                             lineHeight = lineHeight,
                             letterSpacing = letterSpacing,
                             textMargin = textMargin,

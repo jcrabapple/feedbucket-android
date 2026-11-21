@@ -2,4 +2,9 @@
 <!-- FeedBucket brand strings and third-party notices (S34/S36). -->
 <resources>
     <string name="font_google_sans_flex_attribution" translatable="false">Google Sans Flex © 2015 Google LLC. All Rights Reserved. © 2022 The Google Sans Flex Project Authors (github.com/googlefonts/googlesans-flex). Licensed under the SIL Open Font License, Version 1.1 (see res/raw/ofl_google_sans_flex.txt).</string>
+    <string name="font_literata_attribution" translatable="false">Literata © 2017 The Literata Project Authors (github.com/googlefonts/literata). Licensed under the SIL Open Font License, Version 1.1 (see res/raw/ofl_literata.txt).</string>
+    <string name="font_source_serif_4_attribution" translatable="false">Source Serif 4 © 2014–2023 Adobe (adobe.com), with Reserved Font Name “Source”. Source is a trademark of Adobe in the United States and/or other countries. Licensed under the SIL Open Font License, Version 1.1 (see res/raw/ofl_source_serif_4.txt).</string>
+    <string name="font_atkinson_hyperlegible_attribution" translatable="false">Atkinson Hyperlegible © 2020 Braille Institute of America, Inc. Licensed under the SIL Open Font License, Version 1.1 (see res/raw/ofl_atkinson_hyperlegible.txt).</string>
+    <string name="font_lexend_attribution" translatable="false">Lexend © 2019 The Lexend Project Authors (github.com/googlefonts/lexend). Licensed under the SIL Open Font License, Version 1.1 (see res/raw/ofl_lexend.txt).</string>
+    <string name="bundled_fonts">Bundled fonts</string>
 </resources>
