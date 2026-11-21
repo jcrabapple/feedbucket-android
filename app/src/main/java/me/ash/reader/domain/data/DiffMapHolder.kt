@@ -1,11 +1,14 @@
 package me.ash.reader.domain.data
 
 import android.content.Context
+import androidx.annotation.Keep
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.snapshotFlow
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +22,8 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.ash.reader.domain.model.account.Account
 import me.ash.reader.domain.model.account.AccountType
@@ -27,10 +32,18 @@ import me.ash.reader.domain.service.AccountService
 import me.ash.reader.domain.service.RssService
 import me.ash.reader.infrastructure.di.ApplicationScope
 import me.ash.reader.infrastructure.di.IODispatcher
+import timber.log.Timber
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 
 private const val TAG = "DiffMapHolder"
+private const val CACHE_FILE_NAME = "diff_map.json"
+private const val CACHE_TMP_FILE_NAME = "diff_map.json.tmp"
 
 @OptIn(FlowPreview::class)
 class DiffMapHolder @Inject constructor(
@@ -56,13 +69,21 @@ class DiffMapHolder @Inject constructor(
     val shouldSyncWithRemote get() = currentAccount?.type != AccountType.Local
 
     private val gson = Gson()
+    private val mapType = object : TypeToken<Map<String, Diff>>() {}.type
+
+    /**
+     * Serializes every read, write, and delete of the diff cache file for
+     * this holder so a load, a debounced persist, and a commit reconcile can
+     * never interleave on `diff_map.json`.
+     */
+    private val cacheIoMutex = Mutex()
 
     private val cacheDir = context.cacheDir.resolve("diff")
+
+    @Volatile
     private var userCacheDir = cacheDir
 
     private var currentAccount: Account? = null
-
-    private val cacheFile: File get() = userCacheDir.resolve("diff_map.json")
 
     var dbJob: Job? = null
     var remoteJob: Job? = null
@@ -92,7 +113,10 @@ class DiffMapHolder @Inject constructor(
     private fun cleanup(account: Account) {
         dbJob?.cancel()
         remoteJob?.cancel()
-        writeDiffsToCache()
+        // Snapshot the pending diffs and the outgoing account's directory
+        // synchronously, before init() repoints userCacheDir at the next
+        // account and diffMap.clear() empties the live map.
+        writeDiffsToCache(diffMap.toMap(), userCacheDir)
         diffMap.clear()
         pendingSyncDiffs.clear()
         syncedDiffs.clear()
@@ -102,7 +126,7 @@ class DiffMapHolder @Inject constructor(
         dbJob = applicationScope.launch(ioDispatcher) {
             diffMapSnapshotFlow.debounce(2_000).collect {
                 if (it.isNotEmpty()) {
-                    writeDiffsToCache()
+                    writeDiffsToCache(it)
                 }
             }
         }
@@ -199,26 +223,94 @@ class DiffMapHolder @Inject constructor(
 
     fun commitDiffsToDb() {
         applicationScope.launch(ioDispatcher) {
-            val markAsReadArticles = diffMap.filter { !it.value.isUnread }.map { it.key }.toSet()
-            val markAsUnreadArticles = diffMap.filter { it.value.isUnread }.map { it.key }.toSet()
-            clearDiffs()
-            rssService.get().batchMarkAsRead(articleIds = markAsReadArticles, isUnread = false)
-            rssService.get().batchMarkAsRead(articleIds = markAsUnreadArticles, isUnread = true)
+            commitDiffsToDbSuspend()
         }
     }
 
-    private fun writeDiffsToCache() {
-        applicationScope.launch(ioDispatcher) {
-            try {
-                val tmpJson = gson.toJson(diffMap)
-                userCacheDir.mkdirs()
-                cacheFile.createNewFile()
-                if (cacheFile.exists() && cacheFile.canWrite()) {
-                    cacheFile.writeText(tmpJson)
-                }
-            } catch (_: Exception) {
-
+    /**
+     * Commits the CURRENT diff snapshot to the database and reconciles the
+     * cache file under [cacheIoMutex]. Only the committed keys are removed
+     * from [diffMap], so diffs recorded while the batch runs survive and are
+     * persisted back by the reconcile write instead of being cleared by an
+     * uncoordinated delete.
+     */
+    private suspend fun commitDiffsToDbSuspend() {
+        val snapshot = diffMap.toMap()
+        snapshot.keys.forEach { diffMap.remove(it) }
+        cacheIoMutex.withLock {
+            val remainder = diffMap.toMap()
+            if (remainder.isEmpty()) {
+                deleteCacheFilesLocked()
+            } else {
+                writeDiffsAtomicLocked(remainder, userCacheDir)
             }
+        }
+        if (snapshot.isEmpty()) return
+        val markAsReadArticles = snapshot.filter { !it.value.isUnread }.map { it.key }.toSet()
+        val markAsUnreadArticles = snapshot.filter { it.value.isUnread }.map { it.key }.toSet()
+        rssService.get().batchMarkAsRead(articleIds = markAsReadArticles, isUnread = false)
+        rssService.get().batchMarkAsRead(articleIds = markAsUnreadArticles, isUnread = true)
+    }
+
+    /**
+     * Atomically persists an immutable snapshot of the diff map: the JSON is
+     * written to a sibling temp file, flushed and synced, then moved over the
+     * cache file, so a concurrent reader (or process death mid-write) can
+     * never observe a half-written `diff_map.json`. All file I/O runs under
+     * [cacheIoMutex]; [targetDir] is captured by the caller so an account
+     * switch cannot redirect a pending write. Internal visibility is the
+     * seam for JVM atomic-write coverage.
+     */
+    internal fun writeDiffsToCache(
+        snapshot: Map<String, Diff>,
+        targetDir: File = userCacheDir,
+    ): Job = applicationScope.launch(ioDispatcher) {
+        cacheIoMutex.withLock {
+            writeDiffsAtomicLocked(snapshot, targetDir)
+        }
+    }
+
+    /** Caller must hold [cacheIoMutex]. */
+    private fun writeDiffsAtomicLocked(snapshot: Map<String, Diff>, targetDir: File) {
+        val targetFile = targetDir.resolve(CACHE_FILE_NAME)
+        val tmpFile = targetDir.resolve(CACHE_TMP_FILE_NAME)
+        try {
+            targetDir.mkdirs()
+            val json = gson.toJson(snapshot)
+            FileOutputStream(tmpFile).use { out ->
+                out.write(json.toByteArray(Charsets.UTF_8))
+                out.flush()
+                out.fd.sync()
+            }
+            moveTempOverTarget(tmpFile, targetFile)
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "failed to write diff cache; discarding temp file")
+            deleteQuietly(tmpFile)
+        }
+    }
+
+    private fun moveTempOverTarget(tmpFile: File, targetFile: File) {
+        try {
+            Files.move(
+                tmpFile.toPath(),
+                targetFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+            return
+        } catch (expected: AtomicMoveNotSupportedException) {
+            Timber.tag(TAG).w(expected, "atomic move unsupported; falling back")
+        } catch (expected: UnsupportedOperationException) {
+            Timber.tag(TAG).w(expected, "atomic move unsupported; falling back")
+        }
+        try {
+            Files.move(tmpFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            return
+        } catch (expected: IOException) {
+            Timber.tag(TAG).w(expected, "nio move failed; falling back to renameTo")
+        }
+        if (!tmpFile.renameTo(targetFile)) {
+            throw IOException("failed to move ${tmpFile.name} over ${targetFile.name}")
         }
     }
 
@@ -254,36 +346,116 @@ class DiffMapHolder @Inject constructor(
         syncedDiffs += diffs.filter { synced.contains(it.key) }
     }
 
+    /**
+     * Loads persisted diffs for the current account, then commits them. The
+     * commit now runs INSIDE the load coroutine (it was an
+     * invokeOnCompletion callback): a cancelled load no longer fires a
+     * commit, an empty or corrupt load makes the commit a cheap no-op, and
+     * the valid-cache semantics (load, then commit to db) are preserved.
+     */
     private fun commitDiffsFromCache() {
         applicationScope.launch(ioDispatcher) {
-            if (cacheFile.exists() && cacheFile.canRead()) {
-                val tmpJson = cacheFile.readText()
-                val mapType = object : TypeToken<Map<String, Diff>>() {}.type
-                val diffMapFromCache = gson.fromJson<Map<String, Diff>>(
-                    tmpJson, mapType
-                )
-                diffMapFromCache?.let {
-                    diffMap.clear()
-                    diffMap.putAll(it)
-                }
+            val loaded = cacheIoMutex.withLock { readDiffsFromCacheLocked() }
+            loaded?.let {
+                diffMap.clear()
+                diffMap.putAll(it)
             }
-        }.invokeOnCompletion {
-            commitDiffsToDb()
+            commitDiffsToDbSuspend()
         }
     }
 
-    private fun clearDiffs() {
-        applicationScope.launch(ioDispatcher) {
-            if (cacheFile.exists() && cacheFile.canWrite()) {
-                cacheFile.delete()
+    /**
+     * Reads and validates the cache file for [userCacheDir]. Returns null
+     * when nothing usable is on disk (missing, unreadable, empty, or corrupt
+     * file); a corrupt or empty file is DELETED here so it can never crash a
+     * later load. Otherwise returns the validated entries — malformed
+     * records Gson can materialize for damaged JSON (null values, missing
+     * ids) are dropped, and the file is rewritten without them.
+     * Caller must hold [cacheIoMutex].
+     */
+    private fun readDiffsFromCacheLocked(): Map<String, Diff>? {
+        val dir = userCacheDir
+        val file = dir.resolve(CACHE_FILE_NAME)
+        if (!file.exists() || !file.canRead()) return null
+        val json = try {
+            file.readText()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "unreadable diff cache; deleting corrupt files")
+            deleteCacheFilesLocked(dir)
+            return null
+        }
+        val parsed = try {
+            gson.fromJson<Map<String, Diff>>(json, mapType)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // JsonSyntaxException (e.g. a truncated file with an unterminated
+            // string), JsonIOException, or any other damage: delete the file
+            // and start empty instead of crashing on every account emission.
+            Timber.tag(TAG).w(e, "corrupt diff cache; deleting and starting empty")
+            deleteCacheFilesLocked(dir)
+            return null
+        }
+        if (parsed == null) {
+            Timber.tag(TAG).w("empty diff cache file; deleting")
+            deleteCacheFilesLocked(dir)
+            return null
+        }
+        val validated = LinkedHashMap<String, Diff>(parsed.size)
+        var dropped = 0
+        for (entry in parsed.entries) {
+            if (isUsableEntry(entry.key, entry.value)) {
+                validated[entry.key] = entry.value
+            } else {
+                dropped++
             }
-            diffMap.clear()
+        }
+        if (dropped > 0) {
+            Timber.tag(TAG).w("ignoring $dropped malformed diff cache entries")
+            if (validated.isEmpty()) {
+                deleteCacheFilesLocked(dir)
+            } else {
+                writeDiffsAtomicLocked(validated, dir)
+            }
+        }
+        return validated
+    }
+
+    /**
+     * Gson materializes damaged records reflectively: a null value, or a
+     * record whose non-null Kotlin id fields are actually null at runtime.
+     * Checking through nullable parameters filters those instead of crashing
+     * later when the entry is read.
+     */
+    private fun isUsableEntry(key: String?, value: Diff?): Boolean {
+        if (key.isNullOrBlank() || value == null) return false
+        val articleId: String? = value.articleId
+        val feedId: String? = value.feedId
+        return !articleId.isNullOrEmpty() && !feedId.isNullOrEmpty()
+    }
+
+    /** Caller must hold [cacheIoMutex]. */
+    private fun deleteCacheFilesLocked(targetDir: File = userCacheDir) {
+        deleteQuietly(targetDir.resolve(CACHE_FILE_NAME))
+        deleteQuietly(targetDir.resolve(CACHE_TMP_FILE_NAME))
+    }
+
+    private fun deleteQuietly(file: File) {
+        try {
+            if (file.exists()) file.delete()
+        } catch (expected: SecurityException) {
+            Timber.tag(TAG).w(expected, "failed to delete ${file.name}")
         }
     }
 }
 
+@Keep
 data class Diff(
-    val isUnread: Boolean, val articleId: String, val feedId: String
+    @SerializedName("isUnread") val isUnread: Boolean,
+    @SerializedName("articleId") val articleId: String,
+    @SerializedName("feedId") val feedId: String,
 ) {
     constructor(isUnread: Boolean, articleWithFeed: ArticleWithFeed) : this(
         isUnread = isUnread,
