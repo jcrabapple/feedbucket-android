@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import me.ash.reader.infrastructure.preference.LocalFlowArticleListReadIndicator
 import me.ash.reader.ui.ext.surfaceColorAtElevation
 import me.ash.reader.ui.theme.palette.onDark
 
@@ -19,6 +20,7 @@ fun StickyHeader(
     isShowFeedIcon: Boolean,
     articleListTonalElevation: Int,
 ) {
+    val readIndicator = LocalFlowArticleListReadIndicator.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -31,7 +33,13 @@ fun StickyHeader(
         Text(
             modifier = Modifier
                 .padding(
-                    start = if (isShowFeedIcon) 54.dp else 24.dp,
+                    // Structural alignment: the header starts on the row text
+                    // column edge (card content edge + gutter + gutter gap)
+                    // when a gutter is shown, else on the card content edge.
+                    start = ArticleItemReadState.stickyHeaderStartPadding(
+                        isShowFeedIcon,
+                        readIndicator,
+                    ),
                 )
                 .padding(top = 8.dp, bottom = 4.dp),
             text = dateString,

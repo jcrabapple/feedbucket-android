@@ -43,6 +43,7 @@ import me.ash.reader.infrastructure.preference.LocalFlowArticleListFeedName
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListImage
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListReadIndicator
 import me.ash.reader.infrastructure.preference.LocalFlowArticleListTime
+import me.ash.reader.ui.page.home.flow.ARTICLE_ROW_DOT_TAG
 import me.ash.reader.ui.page.home.flow.ArticleItem
 import me.ash.reader.ui.page.home.flow.ArticleList
 import me.ash.reader.ui.page.home.flow.FLOW_DIVIDER_TAG
@@ -110,12 +111,15 @@ class RefreshV02ListInstrumentedTest {
     @Composable
     private fun FlowPrefs(
         readIndicator: FlowArticleReadIndicatorPreference,
+        feedIcon: Boolean = true,
         content: @Composable () -> Unit,
     ) {
         MaterialTheme(colorScheme = FeedBucketColorSchemes.Light) {
             Surface(color = MaterialTheme.colorScheme.surface) {
                 CompositionLocalProvider(
-                    LocalFlowArticleListFeedIcon provides FlowArticleListFeedIconPreference.ON,
+                    LocalFlowArticleListFeedIcon provides
+                        if (feedIcon) FlowArticleListFeedIconPreference.ON
+                        else FlowArticleListFeedIconPreference.OFF,
                     LocalFlowArticleListFeedName provides FlowArticleListFeedNamePreference.ON,
                     LocalFlowArticleListImage provides FlowArticleListImagePreference.ON,
                     LocalFlowArticleListDesc provides FlowArticleListDescPreference.NONE,
@@ -155,6 +159,13 @@ class RefreshV02ListInstrumentedTest {
         val d = composeTestRule.density.density
         val x = (xDp * d).toInt().coerceIn(0, image.width - 1)
         val y = (yDp * d).toInt().coerceIn(0, image.height - 1)
+        return image.getPixel(x, y)
+    }
+
+    private fun pixelAtCenter(bounds: androidx.compose.ui.geometry.Rect): Int {
+        val image = composeTestRule.onRoot().captureToImage().asAndroidBitmap()
+        val x = ((bounds.left + bounds.right) / 2f).toInt().coerceIn(0, image.width - 1)
+        val y = ((bounds.top + bounds.bottom) / 2f).toInt().coerceIn(0, image.height - 1)
         return image.getPixel(x, y)
     }
 
@@ -256,7 +267,6 @@ class RefreshV02ListInstrumentedTest {
         }
         composeTestRule.waitForIdle()
 
-        val d = composeTestRule.density.density
         val unreadTitle =
             composeTestRule
                 .onNodeWithText("Unread Title", useUnmergedTree = true)
@@ -270,7 +280,7 @@ class RefreshV02ListInstrumentedTest {
         // Reserved slot: read/unread never shift the title edge.
         assertEquals(unreadTitle.left, readTitle.left, 0.5f)
 
-        // feedName start padding compensates: same vertical edge as title
+        // Structural gutter: feedName shares the title's left edge
         // (first "Example Feed" node belongs to the unread row).
         val unreadFeed =
             composeTestRule
@@ -279,44 +289,23 @@ class RefreshV02ListInstrumentedTest {
                 .boundsInRoot
         assertEquals(unreadFeed.left, unreadTitle.left, 0.5f)
 
-        // Diagnostic scan: locate every primary-colored pixel in the unread
-        // row (dot position witness in the test log).
-        val image = composeTestRule.onRoot().captureToImage().asAndroidBitmap()
-        val row = composeTestRule.onNodeWithTag("row_unread").fetchSemanticsNode().boundsInRoot
-        println(
-            "[probe] title dp rect L=${unreadTitle.left / d} T=${unreadTitle.top / d} " +
-                "R=${unreadTitle.right / d} B=${unreadTitle.bottom / d}; " +
-                "row dp rect L=${row.left / d} T=${row.top / d} R=${row.right / d} B=${row.bottom / d}"
-        )
-        var hits = 0
-        var y = row.top.toInt().coerceAtLeast(0)
-        while (y < row.bottom.toInt().coerceAtMost(image.height)) {
-            var x = row.left.toInt().coerceAtLeast(0)
-            while (x < row.right.toInt().coerceAtMost(image.width)) {
-                if (image.getPixel(x, y) == primaryArgb) {
-                    if (hits < 24) {
-                        println("[probe] primary px ($x,$y) dp (${x / d},${y / d})")
-                    }
-                    hits++
-                }
-                x += 2
-            }
-            y += 2
-        }
-        println("[probe] primary pixel hits in unread row: $hits")
-
+        // Reserved slot below the icon: both rows carry a dot node at
+        // identical geometry; only the paint differs.
+        val dots =
+            composeTestRule.onAllNodesWithTag(ARTICLE_ROW_DOT_TAG, useUnmergedTree = true)
+        dots.assertCountEquals(2)
+        val unreadDot = dots[0].fetchSemanticsNode().boundsInRoot
+        val readDot = dots[1].fetchSemanticsNode().boundsInRoot
+        val unreadRow =
+            composeTestRule.onNodeWithTag("row_unread").fetchSemanticsNode().boundsInRoot
+        val readRow =
+            composeTestRule.onNodeWithTag("row_read").fetchSemanticsNode().boundsInRoot
+        assertEquals(unreadDot.left, readDot.left, 0.5f)
+        assertEquals(unreadDot.top - unreadRow.top, readDot.top - readRow.top, 1.5f)
         // Dot pixel: primary center for the unread row, transparent (surface)
         // at the identical slot of the read row.
-        val unreadDotX = unreadTitle.left / d - 12f
-        val unreadDotY = unreadTitle.top / d + 4f
-        println(
-            "[probe] unread dot sample dp ($unreadDotX,$unreadDotY) " +
-                "px=0x${Integer.toHexString(pixelIn(image, unreadDotX, unreadDotY))}"
-        )
-        assertColorClose(pixelIn(image, unreadDotX, unreadDotY), primaryArgb, "unread dot center")
-        val readDotX = readTitle.left / d - 12f
-        val readDotY = readTitle.top / d + 4f
-        assertColorClose(pixelIn(image, readDotX, readDotY), surfaceArgb, "read dot slot is empty")
+        assertColorClose(pixelAtCenter(unreadDot), primaryArgb, "unread dot center")
+        assertColorClose(pixelAtCenter(readDot), surfaceArgb, "read dot slot is empty")
     }
 
     @Test
@@ -325,6 +314,7 @@ class RefreshV02ListInstrumentedTest {
             Column(Modifier.fillMaxWidth()) {
                 FlowPrefs(FlowArticleReadIndicatorPreference.None) {
                     ArticleItem(
+                        modifier = Modifier.testTag("row_none_icon"),
                         feedName = "Example Feed",
                         feedIconUrl = null,
                         title = "None Pref Title",
@@ -334,9 +324,30 @@ class RefreshV02ListInstrumentedTest {
                 }
                 FlowPrefs(FlowArticleReadIndicatorPreference.AllRead) {
                     ArticleItem(
+                        modifier = Modifier.testTag("row_allread_icon"),
                         feedName = "Example Feed",
                         feedIconUrl = null,
                         title = "AllRead Pref Title",
+                        timeString = "10:00",
+                        isUnread = false,
+                    )
+                }
+                FlowPrefs(FlowArticleReadIndicatorPreference.None, feedIcon = false) {
+                    ArticleItem(
+                        modifier = Modifier.testTag("row_none_noicon"),
+                        feedName = "Example Feed",
+                        feedIconUrl = null,
+                        title = "None NoIcon Title",
+                        timeString = "10:00",
+                        isUnread = false,
+                    )
+                }
+                FlowPrefs(FlowArticleReadIndicatorPreference.AllRead, feedIcon = false) {
+                    ArticleItem(
+                        modifier = Modifier.testTag("row_allread_noicon"),
+                        feedName = "Example Feed",
+                        feedIconUrl = null,
+                        title = "AllRead NoIcon Title",
                         timeString = "10:00",
                         isUnread = false,
                     )
@@ -345,26 +356,54 @@ class RefreshV02ListInstrumentedTest {
         }
         composeTestRule.waitForIdle()
 
-        val noneTitleLeft =
-            composeTestRule
-                .onNodeWithText("None Pref Title", useUnmergedTree = true)
-                .fetchSemanticsNode()
-                .boundsInRoot
-                .left
-        val allReadTitleLeft =
-            composeTestRule
-                .onNodeWithText("AllRead Pref Title", useUnmergedTree = true)
-                .fetchSemanticsNode()
-                .boundsInRoot
-                .left
-        // None: no slot, no padding compensation; AllRead: exactly 16dp in.
-        val shiftDp = (allReadTitleLeft - noneTitleLeft) / composeTestRule.density.density
-        assertEquals(16f, shiftDp, 0.5f)
+        val d = composeTestRule.density.density
+        fun offsetDp(tag: String, title: String): Float {
+            val rowLeft =
+                composeTestRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.left
+            val left =
+                composeTestRule
+                    .onNodeWithText(title, useUnmergedTree = true)
+                    .fetchSemanticsNode()
+                    .boundsInRoot
+                    .left
+            return (left - rowLeft) / d
+        }
 
-        // feedName aligns with the title edge in both configurations.
+        // Icon on: the gutter is the constant 24dp favicon frame + 12dp gap
+        // regardless of the read indicator, so None never differs from
+        // AllRead. Row tag bounds start after the 12dp outer margin, so the
+        // text edge sits 12dp inner padding + 36dp gutter total inside.
+        assertEquals(48f, offsetDp("row_none_icon", "None Pref Title"), 1f)
+        assertEquals(48f, offsetDp("row_allread_icon", "AllRead Pref Title"), 1f)
+        // Icon off: None omits the gutter entirely (text at the 12dp inner
+        // padding edge); AllRead reserves the 12dp dot lane + 12dp gap.
+        assertEquals(12f, offsetDp("row_none_noicon", "None NoIcon Title"), 1f)
+        assertEquals(36f, offsetDp("row_allread_noicon", "AllRead NoIcon Title"), 1f)
+
+        // feedName aligns with the title edge in every configuration.
         val feeds = composeTestRule.onAllNodesWithText("Example Feed", useUnmergedTree = true)
-        assertEquals(noneTitleLeft, feeds[0].fetchSemanticsNode().boundsInRoot.left, 0.5f)
-        assertEquals(allReadTitleLeft, feeds[1].fetchSemanticsNode().boundsInRoot.left, 0.5f)
+        for ((i, title) in
+            listOf(
+                    "None Pref Title",
+                    "AllRead Pref Title",
+                    "None NoIcon Title",
+                    "AllRead NoIcon Title",
+                )
+                .withIndex()
+        ) {
+            val titleLeft =
+                composeTestRule
+                    .onNodeWithText(title, useUnmergedTree = true)
+                    .fetchSemanticsNode()
+                    .boundsInRoot
+                    .left
+            assertEquals(
+                "feedName/title edge for $title",
+                titleLeft,
+                feeds[i].fetchSemanticsNode().boundsInRoot.left,
+                0.5f,
+            )
+        }
     }
 
     @Test
@@ -382,14 +421,11 @@ class RefreshV02ListInstrumentedTest {
             }
         }
         composeTestRule.waitForIdle()
-        val title =
-            composeTestRule
-                .onNodeWithText("Starred Read Title", useUnmergedTree = true)
-                .fetchSemanticsNode()
-                .boundsInRoot
-        val d = composeTestRule.density.density
+        val dots =
+            composeTestRule.onAllNodesWithTag(ARTICLE_ROW_DOT_TAG, useUnmergedTree = true)
+        dots.assertCountEquals(1)
         assertColorClose(
-            pixelAtDp(title.left / d - 12f, title.top / d + 4f),
+            pixelAtCenter(dots[0].fetchSemanticsNode().boundsInRoot),
             surfaceArgb,
             "starred-read dot slot is empty",
         )

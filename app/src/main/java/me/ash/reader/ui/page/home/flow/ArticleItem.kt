@@ -5,13 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,10 +47,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -91,11 +93,23 @@ import me.ash.reader.ui.theme.palette.onDark
 
 private const val TAG = "ArticleItem"
 
+/** Test seams for the structural gutter geometry (instrumented alignment assertions). */
+const val ARTICLE_ROW_GUTTER_TAG = "article_row_gutter"
+const val ARTICLE_ROW_ICON_TAG = "article_row_feed_icon"
+const val ARTICLE_ROW_DOT_TAG = "article_row_read_dot"
+
 /**
- * Pure read-state decisions for the flow row (REFRESH-v0.2 sections 1.1-1.3).
- * Extracted so the emphasis and dot truth table is unit-testable on the JVM.
+ * Pure read-state decisions for the flow row (REFRESH-v0.2 sections 1.1-1.3,
+ * structural-gutter rework). Extracted so the emphasis and dot truth table and
+ * the gutter geometry are unit-testable on the JVM.
  */
 internal object ArticleItemReadState {
+
+    /** Card content edge: 12dp row margin + 12dp inner row padding. */
+    val contentEdge: Dp = 24.dp
+
+    /** Horizontal gap between the left gutter column and the text column. */
+    val gutterEndSpacing: Dp = 12.dp
 
     /** Unread-level typography (weight 600 + onSurface + primary feedName). */
     fun emphasized(
@@ -119,13 +133,45 @@ internal object ArticleItemReadState {
     fun reservesDotSlot(readIndicator: FlowArticleReadIndicatorPreference): Boolean =
         readIndicator != FlowArticleReadIndicatorPreference.None
 
-    /** Keeps feedName on the title edge: 24dp favicon frame + 10dp gap, then the dot slot. */
-    fun feedNameStartPadding(
+    /**
+     * The left gutter renders whenever the favicon is on or a dot slot is
+     * reserved; it is omitted only when neither is, so the text column then
+     * spans the full padded width.
+     */
+    fun showsGutter(
+        isShowFeedIcon: Boolean,
+        readIndicator: FlowArticleReadIndicatorPreference,
+    ): Boolean = isShowFeedIcon || reservesDotSlot(readIndicator)
+
+    /**
+     * Structural gutter width: the 24dp favicon frame when the icon is shown,
+     * else the 12dp reserved dot lane. feedName, title and snippet alignment
+     * comes from this column instead of per-line start padding, so all three
+     * share the exact same left edge in every configuration.
+     */
+    fun gutterWidth(
         isShowFeedIcon: Boolean,
         readIndicator: FlowArticleReadIndicatorPreference,
     ): Dp =
-        (if (isShowFeedIcon) 34.dp else 0.dp) +
-            (if (reservesDotSlot(readIndicator)) 16.dp else 0.dp)
+        when {
+            isShowFeedIcon -> 24.dp
+            reservesDotSlot(readIndicator) -> 12.dp
+            else -> 0.dp
+        }
+
+    /**
+     * Sticky date header start padding: aligns the header with the row text
+     * column when a gutter is shown, else with the card content edge.
+     */
+    fun stickyHeaderStartPadding(
+        isShowFeedIcon: Boolean,
+        readIndicator: FlowArticleReadIndicatorPreference,
+    ): Dp =
+        if (showsGutter(isShowFeedIcon, readIndicator)) {
+            contentEdge + gutterWidth(isShowFeedIcon, readIndicator) + gutterEndSpacing
+        } else {
+            contentEdge
+        }
 }
 
 @Composable
@@ -179,11 +225,16 @@ fun ArticleItem(
     val emphasized = ArticleItemReadState.emphasized(articleListReadIndicator, isUnread, isStarred)
     val showDot = ArticleItemReadState.showDot(articleListReadIndicator, isUnread)
     val reservesDotSlot = ArticleItemReadState.reservesDotSlot(articleListReadIndicator)
-    val feedNameStartPadding =
-        ArticleItemReadState.feedNameStartPadding(articleListFeedIcon.value, articleListReadIndicator)
+    val showGutter = ArticleItemReadState.showsGutter(articleListFeedIcon.value, articleListReadIndicator)
+    val gutterWidth = ArticleItemReadState.gutterWidth(articleListFeedIcon.value, articleListReadIndicator)
+    val showMetadataRow = articleListFeedName.value || articleListDate.value || isStarred
     val readStateDescription = stringResource(if (isUnread) R.string.unread else R.string.read)
 
-    Column(
+    // Two-column row: a fixed left gutter (favicon on top, reserved unread-dot
+    // slot below it) plus one content column whose text lines all start at
+    // 0dp, so feedName, title and snippet share the exact same left edge in
+    // every icon/dot/thumbnail/read-state combination.
+    Row(
         modifier =
             modifier
                 .padding(horizontal = 12.dp)
@@ -192,38 +243,83 @@ fun ArticleItem(
                 .semantics { stateDescription = readStateDescription }
                 .padding(horizontal = 12.dp, vertical = 12.dp)
     ) {
-        // Top
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Feed name
-            if (articleListFeedName.value) {
-                Text(
-                    modifier =
-                        Modifier.weight(1f)
-                            .padding(
-                                start = feedNameStartPadding,
-                                end = 10.dp,
-                            ),
-                    text = feedName,
-                    color =
-                        if (emphasized) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        // Left gutter
+        if (showGutter) {
+            Column(
+                modifier =
+                    Modifier
+                        .testTag(ARTICLE_ROW_GUTTER_TAG)
+                        .padding(end = ArticleItemReadState.gutterEndSpacing)
+                        .width(gutterWidth),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (articleListFeedIcon.value) {
+                    FeedIcon(
+                        modifier = Modifier.testTag(ARTICLE_ROW_ICON_TAG),
+                        feedName = feedName,
+                        iconUrl = feedIconUrl,
+                    )
+                }
+                if (reservesDotSlot) {
+                    // Reserved 8dp slot below the icon: read/unread transitions
+                    // never shift text or icon horizontally or vertically.
+                    // Decorative; the row exposes stateDescription instead.
+                    Spacer(
+                        modifier =
+                            Modifier.height(
+                                if (articleListFeedIcon.value) 10.dp else 4.dp
+                            )
+                    )
+                    Box(
+                        modifier =
+                            Modifier.size(8.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (showDot) MaterialTheme.colorScheme.primary
+                                    else Color.Transparent
+                                )
+                                .clearAndSetSemantics { testTag = ARTICLE_ROW_DOT_TAG }
+                    )
+                }
+            }
+        }
 
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier) {
-                    // Starred
+        // Content column
+        Column(modifier = Modifier.weight(1f)) {
+            // Row 1: metadata line (feedName left, star + time right)
+            if (showMetadataRow) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (articleListFeedName.value) {
+                        Text(
+                            modifier = Modifier.weight(1f).padding(end = 10.dp),
+                            text = feedName,
+                            color =
+                                if (emphasized) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } else if (articleListDate.value) {
+                        // feedName hidden: the time takes the weight(1f) left edge.
+                        Text(
+                            modifier = Modifier.weight(1f),
+                            text = timeString ?: "",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                     if (isStarred) {
                         StarredIcon()
                     }
-
-                    if (articleListDate.value) {
-                        // Time
+                    if (articleListFeedName.value && articleListDate.value) {
                         Text(
                             modifier = Modifier,
                             text = timeString ?: "",
@@ -232,58 +328,15 @@ fun ArticleItem(
                         )
                     }
                 }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(feedNameStartPadding))
-
-                    if (articleListDate.value) {
-                        // Time
-                        Text(
-                            modifier = Modifier.weight(1f),
-                            text = timeString ?: "",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        // Starred
-                        if (isStarred) {
-                            StarredIcon()
-                        }
-                    }
-                }
             }
 
-            // Right
-
-        }
-
-        // Bottom
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-            // Feed icon
-            if (articleListFeedIcon.value) {
-                FeedIcon(feedName = feedName, iconUrl = feedIconUrl)
-                Spacer(modifier = Modifier.width(10.dp))
-            }
-
-            // Article
-            Column(modifier = Modifier.weight(1f)) {
-
-                // Title
-                Row {
-                    if (reservesDotSlot) {
-                        // Reserved 8dp slot: read/unread transitions never shift layout.
-                        // Decorative; the row exposes stateDescription instead.
-                        Box(
-                            modifier =
-                                Modifier.size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (showDot) MaterialTheme.colorScheme.primary
-                                        else Color.Transparent
-                                    )
-                                    .clearAndSetSemantics {}
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
+            // Row 2: title + snippet, optional right thumbnail
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .then(if (showMetadataRow) Modifier.padding(top = 4.dp) else Modifier)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title,
                         color =
@@ -300,54 +353,44 @@ fun ArticleItem(
                         maxLines =
                             if (articleListDesc != FlowArticleListDescPreference.NONE) 2 else 4,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
                     )
-                    if (!articleListFeedName.value && !articleListDate.value) {
-                        if (isStarred) {
-                            StarredIcon()
-                        } else {
-                            Spacer(modifier = Modifier.width(16.dp))
-                        }
+                    if (
+                        articleListDesc != FlowArticleListDescPreference.NONE &&
+                            shortDescription.isNotBlank()
+                    ) {
+                        Text(
+                            modifier = Modifier.padding(top = 4.dp),
+                            text = shortDescription,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style =
+                                MaterialTheme.typography.bodySmall.applyTextDirection(
+                                    shortDescription.requiresBidi()
+                                ),
+                            maxLines =
+                                when (articleListDesc) {
+                                    FlowArticleListDescPreference.LONG -> 4
+                                    FlowArticleListDescPreference.SHORT -> 2
+                                    else -> throw IllegalStateException()
+                                },
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
 
-                // Description
-                if (
-                    articleListDesc != FlowArticleListDescPreference.NONE &&
-                        shortDescription.isNotBlank()
-                ) {
-                    Text(
-                        modifier = Modifier.padding(top = 4.dp),
-                        text = shortDescription,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style =
-                            MaterialTheme.typography.bodySmall.applyTextDirection(
-                                shortDescription.requiresBidi()
-                            ),
-                        maxLines =
-                            when (articleListDesc) {
-                                FlowArticleListDescPreference.LONG -> 4
-                                FlowArticleListDescPreference.SHORT -> 2
-                                else -> throw IllegalStateException()
-                            },
-                        overflow = TextOverflow.Ellipsis,
+                // Image
+                if (imgData != null && articleListImage.value) {
+                    RYAsyncImage(
+                        modifier =
+                            Modifier.padding(start = 12.dp)
+                                .size(80.dp)
+                                .clip(MaterialTheme.shapes.small),
+                        data = imgData,
+                        scale = Scale.FILL,
+                        precision = Precision.INEXACT,
+                        size = SIZE_1000,
+                        contentScale = ContentScale.Crop,
                     )
                 }
-            }
-
-            // Image
-            if (imgData != null && articleListImage.value) {
-                RYAsyncImage(
-                    modifier =
-                        Modifier.padding(start = 10.dp)
-                            .size(80.dp)
-                            .clip(MaterialTheme.shapes.small),
-                    data = imgData,
-                    scale = Scale.FILL,
-                    precision = Precision.INEXACT,
-                    size = SIZE_1000,
-                    contentScale = ContentScale.Crop,
-                )
             }
         }
     }

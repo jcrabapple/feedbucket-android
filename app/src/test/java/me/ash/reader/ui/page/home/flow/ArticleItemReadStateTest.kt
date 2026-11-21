@@ -11,7 +11,7 @@ import org.junit.Test
 
 /**
  * REFRESH-v0.2 sections 1.1-1.3: the flow row read-state truth table
- * (emphasis, dot visibility, reserved slot, feedName start alignment)
+ * (emphasis, dot visibility, reserved slot, structural gutter geometry)
  * pinned against the extracted pure helper.
  */
 class ArticleItemReadStateTest {
@@ -65,14 +65,40 @@ class ArticleItemReadStateTest {
     }
 
     @Test
-    fun feedNameStartPaddingKeepsTitleEdgeAlignment() {
-        // 24dp favicon frame + 10dp gap, plus the 16dp reserved dot slot
-        // (8dp dot + 8dp spacer) whenever the indicator is not None.
-        assertEquals(50.dp, ArticleItemReadState.feedNameStartPadding(true, ExcludingStarred))
-        assertEquals(50.dp, ArticleItemReadState.feedNameStartPadding(true, AllRead))
-        assertEquals(34.dp, ArticleItemReadState.feedNameStartPadding(true, None))
-        assertEquals(16.dp, ArticleItemReadState.feedNameStartPadding(false, ExcludingStarred))
-        assertEquals(16.dp, ArticleItemReadState.feedNameStartPadding(false, AllRead))
-        assertEquals(0.dp, ArticleItemReadState.feedNameStartPadding(false, None))
+    fun gutterWidthIsFaviconFrameWhenIconShownRegardlessOfIndicator() {
+        // The favicon frame (24dp) is the gutter; the reserved dot lives
+        // below it, so the indicator preference never changes the width.
+        for (pref in listOf(None, AllRead, ExcludingStarred)) {
+            assertEquals(24.dp, ArticleItemReadState.gutterWidth(true, pref))
+            assertTrue(ArticleItemReadState.showsGutter(true, pref))
+        }
+    }
+
+    @Test
+    fun gutterWidthIsDotLaneWhenIconHiddenAndIndicatorReserved() {
+        assertEquals(12.dp, ArticleItemReadState.gutterWidth(false, ExcludingStarred))
+        assertEquals(12.dp, ArticleItemReadState.gutterWidth(false, AllRead))
+        assertTrue(ArticleItemReadState.showsGutter(false, ExcludingStarred))
+        assertTrue(ArticleItemReadState.showsGutter(false, AllRead))
+    }
+
+    @Test
+    fun gutterOmittedOnlyWhenIconHiddenAndIndicatorNone() {
+        // Text column spans the full padded width; zero visual change for
+        // users who opted out of both favicon and read indicator.
+        assertEquals(0.dp, ArticleItemReadState.gutterWidth(false, None))
+        assertFalse(ArticleItemReadState.showsGutter(false, None))
+    }
+
+    @Test
+    fun stickyHeaderStartAlignsWithRowTextColumnEdge() {
+        // Card content edge (12dp margin + 12dp inner padding) + gutter +
+        // 12dp gutter gap when a gutter is shown, else the content edge.
+        assertEquals(60.dp, ArticleItemReadState.stickyHeaderStartPadding(true, ExcludingStarred))
+        assertEquals(60.dp, ArticleItemReadState.stickyHeaderStartPadding(true, AllRead))
+        assertEquals(60.dp, ArticleItemReadState.stickyHeaderStartPadding(true, None))
+        assertEquals(48.dp, ArticleItemReadState.stickyHeaderStartPadding(false, ExcludingStarred))
+        assertEquals(48.dp, ArticleItemReadState.stickyHeaderStartPadding(false, AllRead))
+        assertEquals(24.dp, ArticleItemReadState.stickyHeaderStartPadding(false, None))
     }
 }
