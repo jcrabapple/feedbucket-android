@@ -311,40 +311,54 @@ fun FlowPage(
 
     var pagingItems: LazyPagingItems<ArticleFlowItem>? by remember { mutableStateOf(null) }
 
+    // queue-scroll — capture the active reader article at composition time:
+    // on Back navigation the reading data is cleared shortly after the list
+    // pane re-enters composition, and the return alignment below must run
+    // against the article that was actually open.
+    val returnArticleId = readerState.articleId
+
     if (isTwoPane) {
         LaunchedEffect(readerState) {
-            if (readerState.articleId != null) {
-                val articleId = readerState.articleId
-
-                val itemList = pagingItems?.itemSnapshotList
-
-                val index =
-                    itemList?.indexOfFirst {
-                        it is ArticleFlowItem.Article && it.articleWithFeed.article.id == articleId
-                    } ?: -1
-
-                if (index != -1) {
-                    scrollAppBarToCollapsed()
-                    listState.animateScrollToItem(index, scrollOffset = -200)
-                }
+            val articleId = returnArticleId ?: return@LaunchedEffect
+            val decision =
+                listState.awaitReturnScrollDecision(
+                    articleId = articleId,
+                    stickyHeaderEnabled = articleListDateStickyHeader.value,
+                    itemCount = { pagingItems?.itemCount ?: 0 },
+                    items = { pagingItems?.itemSnapshotList },
+                )
+            // queue-scroll — only an article that is not cleanly visible
+            // moves, and only to the top of the viewport (offset 0). The
+            // former unconditional negative offset dragged the row toward
+            // the bottom edge on every reader state change.
+            if (decision is ReturnScrollDecision.ScrollTo) {
+                scrollAppBarToCollapsed()
+                listState.animateScrollToItem(decision.targetIndex, decision.scrollOffset)
             }
         }
     } else {
         LaunchedEffect(Unit) {
-            if (readerState.articleId != null) {
-                val articleId = readerState.articleId
-
-                val itemList = pagingItems?.itemSnapshotList
-
-                val index =
-                    itemList?.indexOfFirst {
-                        it is ArticleFlowItem.Article && it.articleWithFeed.article.id == articleId
-                    } ?: -1
-
-                if (index != -1) {
-                    snapAppBarToCollapsed()
-                    listState.requestScrollToItem(index, scrollOffset = -400)
-                }
+            val articleId = returnArticleId ?: return@LaunchedEffect
+            val decision =
+                listState.awaitReturnScrollDecision(
+                    articleId = articleId,
+                    stickyHeaderEnabled = articleListDateStickyHeader.value,
+                    itemCount = { pagingItems?.itemCount ?: 0 },
+                    items = { pagingItems?.itemSnapshotList },
+                )
+            // queue-scroll — returning from the reader, the saveable list
+            // state already carries the tapped position: a cleanly visible
+            // article stays exactly where the user tapped it (list and top
+            // bar untouched). Only a clipped or off-screen target (e.g.
+            // after swiping to another article inside the reader) scrolls,
+            // and only to the top of the viewport. The scroll is requested
+            // (applied on the next layout pass) rather than performed
+            // inline: this coroutine resumes off a snapshotFlow of layout
+            // state, and a suspending scroll here could re-enter an
+            // in-flight measure pass.
+            if (decision is ReturnScrollDecision.ScrollTo) {
+                snapAppBarToCollapsed()
+                listState.requestScrollToItem(decision.targetIndex, decision.scrollOffset)
             }
         }
     }
@@ -766,7 +780,24 @@ fun FlowPage(
                     // generation: exact anchor id, else clamped index, else top
                     // (corrupt/missing rows never crash). Runs per pager, so a
                     // refresh/sync generation roll re-applies the stored anchor.
+                    // queue-scroll — cold list states only: on Back from the
+                    // reader pane the LazyListState Saver already carries the
+                    // live position and the saveable flag below is set, so a
+                    // debounced DB row (which may predate the tap that opened
+                    // the reader) can never overwrite it.
+                    var positionRestored by rememberSaveable(pager) { mutableStateOf(false) }
                     LaunchedEffect(pager) {
+                        if (positionRestored) return@LaunchedEffect
+                        if (
+                            listState.firstVisibleItemIndex != 0 ||
+                                listState.firstVisibleItemScrollOffset != 0 ||
+                                returnArticleId != null
+                        ) {
+                            // Warm Saver state, or an active return-to-article
+                            // override that owns the position.
+                            positionRestored = true
+                            return@LaunchedEffect
+                        }
                         snapshotFlow { pagingItems.loadState.isIdle }
                             .first { it }
                         val ids =
@@ -774,6 +805,7 @@ fun FlowPage(
                         viewModel.restorePosition(positionScope, ids)?.let {
                             listState.scrollToItem(it.itemIndex, it.itemOffsetPx)
                         }
+                        positionRestored = true
                     }
 
                     // S24a — persist the position on scroll-idle (debounced 300 ms).
@@ -899,6 +931,24 @@ fun FlowPage(
                                             openLinkSpecificBrowser,
                                         )
                                     } else {
+                                        // queue-scroll — persist the live position
+                                        // before navigating: pane navigation emits
+                                        // no ON_PAUSE, and a tap under 300 ms after
+                                        // a scroll settle would otherwise leave the
+                                        // durable store holding the pre-scroll
+                                        // position.
+                                        val firstIndex = listState.firstVisibleItemIndex
+                                        val firstOffset = listState.firstVisibleItemScrollOffset
+                                        val anchorId =
+                                            anchorArticleIdAt(pagingItems.itemSnapshotList, firstIndex)
+                                        scope.launch {
+                                            viewModel.persistPosition(
+                                                positionScope,
+                                                anchorId,
+                                                firstIndex,
+                                                firstOffset,
+                                            )
+                                        }
                                         navigateToArticle(articleWithFeed.article.id, index)
                                     }
                                 },
@@ -1016,4 +1066,130 @@ fun FlowPage(
 internal fun anchorArticleIdAt(items: ItemSnapshotList<ArticleFlowItem>?, index: Int): String? {
     if (items == null || index < 0 || index >= items.size) return null
     return (items[index] as? ArticleFlowItem.Article)?.articleWithFeed?.article?.id
+}
+
+/**
+ * One lazy-list item's viewport snapshot in plain pixels (queue-scroll lane).
+ * Keeps [computeReturnScrollTarget] JVM-testable without Compose layout types.
+ */
+internal data class ReturnScrollItemInfo(
+    val index: Int,
+    val offset: Int,
+    val size: Int,
+    val isDateHeader: Boolean = false,
+)
+
+/** Outcome of [computeReturnScrollTarget]. */
+internal sealed interface ReturnScrollDecision {
+    /** The target article is already cleanly visible: leave the list untouched. */
+    data object NoOp : ReturnScrollDecision
+
+    /**
+     * The target is clipped or off-screen: bring [targetIndex] to the top of
+     * the viewport. [scrollOffset] is always 0 — the historical negative
+     * offsets (-400 / -200) pushed the tapped article toward and past the
+     * bottom edge when returning from the reader.
+     */
+    data class ScrollTo(val targetIndex: Int, val scrollOffset: Int) : ReturnScrollDecision
+}
+
+/**
+ * Decides where (or whether) the Read list scrolls when returning from the
+ * reader with the article at [targetIndex] active (queue-scroll lane).
+ *
+ * The target is cleanly visible when it lies fully between the top clearance
+ * and [viewportEndOffset]. The top clearance is [viewportStartOffset], raised
+ * to the bottom edge of a sticky date header pinned over the viewport top
+ * when sticky headers are enabled — an article partially hidden under the
+ * pinned header is not cleanly visible.
+ *
+ * Cleanly visible returns [ReturnScrollDecision.NoOp]: the article stays
+ * exactly where the user tapped it. Otherwise the decision scrolls to the top
+ * of the viewport with offset 0; when sticky headers are enabled and the item
+ * right before the target is its date header, the decision targets the date
+ * item instead, so the pinned header never covers the article's top lines.
+ */
+internal fun computeReturnScrollTarget(
+    targetIndex: Int,
+    visibleItems: List<ReturnScrollItemInfo>,
+    viewportStartOffset: Int,
+    viewportEndOffset: Int,
+    stickyHeaderEnabled: Boolean,
+    previousItemIsDate: Boolean,
+): ReturnScrollDecision {
+    fun scrollToTop(): ReturnScrollDecision {
+        val target =
+            if (stickyHeaderEnabled && previousItemIsDate && targetIndex > 0) {
+                targetIndex - 1
+            } else {
+                targetIndex
+            }
+        return ReturnScrollDecision.ScrollTo(targetIndex = target, scrollOffset = 0)
+    }
+
+    val item = visibleItems.firstOrNull { it.index == targetIndex } ?: return scrollToTop()
+    val topClearance =
+        if (stickyHeaderEnabled) {
+            visibleItems
+                .filter {
+                    it.isDateHeader &&
+                        it.offset <= viewportStartOffset &&
+                        it.offset + it.size > viewportStartOffset
+                }
+                .maxOfOrNull { it.offset + it.size }
+                ?: viewportStartOffset
+        } else {
+            viewportStartOffset
+        }
+    val cleanlyVisible =
+        item.offset >= topClearance && item.offset + item.size <= viewportEndOffset
+    return if (cleanlyVisible) ReturnScrollDecision.NoOp else scrollToTop()
+}
+
+/**
+ * Waits until the list has presented items AND completed a layout pass that
+ * contains them, then resolves the active [articleId] into a
+ * [ReturnScrollDecision] (queue-scroll lane).
+ *
+ * The wait requires `layoutInfo.totalItemsCount > 0` in addition to a non-empty
+ * [LazyPagingItems] count: right after the pane re-enters composition the
+ * paging cache can present items before the first layout pass reflects them,
+ * and deciding against that stale viewport snapshot would scroll a target that
+ * is actually visible.
+ */
+internal suspend fun LazyListState.awaitReturnScrollDecision(
+    articleId: String,
+    stickyHeaderEnabled: Boolean,
+    itemCount: () -> Int,
+    items: () -> ItemSnapshotList<ArticleFlowItem>?,
+): ReturnScrollDecision {
+    snapshotFlow {
+            itemCount() > 0 &&
+                layoutInfo.totalItemsCount > 0 &&
+                layoutInfo.visibleItemsInfo.isNotEmpty()
+        }
+        .first { it }
+    val itemList = items() ?: return ReturnScrollDecision.NoOp
+    val index =
+        itemList.indexOfFirst {
+            it is ArticleFlowItem.Article && it.articleWithFeed.article.id == articleId
+        }
+    if (index < 0) return ReturnScrollDecision.NoOp
+    val info = layoutInfo
+    return computeReturnScrollTarget(
+        targetIndex = index,
+        visibleItems =
+            info.visibleItemsInfo.map { item ->
+                ReturnScrollItemInfo(
+                    index = item.index,
+                    offset = item.offset,
+                    size = item.size,
+                    isDateHeader = item.contentType == CONTENT_TYPE_DATE_HEADER,
+                )
+            },
+        viewportStartOffset = info.viewportStartOffset,
+        viewportEndOffset = info.viewportEndOffset,
+        stickyHeaderEnabled = stickyHeaderEnabled,
+        previousItemIsDate = itemList.getOrNull(index - 1) is ArticleFlowItem.Date,
+    )
 }
