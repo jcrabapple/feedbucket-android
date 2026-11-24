@@ -32,7 +32,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
@@ -40,6 +42,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import me.ash.reader.R
+import me.ash.reader.ui.component.markdown.MarkdownContent
 import me.ash.reader.ui.ext.showToast
 
 /**
@@ -63,9 +66,27 @@ fun AiSummaryOverlay(
     }
 
     val state by viewModel.uiState.collectAsState()
+    AiSummaryOverlayContent(
+        state = state,
+        onNavigateToAiSettings = onNavigateToAiSettings,
+        onDismiss = onDismiss,
+        onRetry = { viewModel.retry() },
+        onRegenerate = { viewModel.regenerate() },
+    )
+}
+
+@Composable
+internal fun AiSummaryOverlayContent(
+    state: AiSummaryUiState,
+    onNavigateToAiSettings: () -> Unit,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit,
+    onRegenerate: () -> Unit,
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val copiedToast = stringResource(R.string.ai_summary_copied)
+    val maxModalHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.82f).coerceIn(240.dp, 640.dp)
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -80,7 +101,10 @@ fun AiSummaryOverlay(
             shadowElevation = 8.dp,
         ) {
             Column(
-                modifier = Modifier.padding(24.dp).heightIn(max = 480.dp),
+                modifier = Modifier
+                    .padding(24.dp)
+                    .heightIn(max = maxModalHeight)
+                    .testTag("ai_summary_modal_column"),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -137,9 +161,8 @@ fun AiSummaryOverlay(
                     }
 
                     is AiSummaryUiState.Success -> {
-                        Text(
-                            text = current.summary,
-                            style = MaterialTheme.typography.bodyLarge,
+                        MarkdownContent(
+                            markdown = current.summary,
                             modifier =
                                 Modifier.weight(1f, fill = false)
                                     .verticalScroll(rememberScrollState()),
@@ -165,7 +188,7 @@ fun AiSummaryOverlay(
                                 Text(stringResource(R.string.ai_summary_copy))
                             }
                             FilledTonalButton(
-                                onClick = { viewModel.regenerate() },
+                                onClick = onRegenerate,
                                 modifier = Modifier.weight(1f),
                             ) {
                                 Text(stringResource(R.string.ai_summary_regenerate))
@@ -182,7 +205,7 @@ fun AiSummaryOverlay(
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
-                            onClick = { viewModel.retry() },
+                            onClick = onRetry,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(stringResource(R.string.ai_summary_retry))
